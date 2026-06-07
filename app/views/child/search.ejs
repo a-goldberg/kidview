@@ -1,0 +1,19 @@
+<%- include('../partials/head', { title }) %>
+<%- include('../partials/header') %>
+
+<main class="child-shell">
+  <section class="child-search-panel">
+    <p class="eyebrow">Kid search</p>
+    <h1>What do you want to learn about?</h1>
+    <form class="search-form" action="/child/results" method="get">
+      <label class="visually-hidden" for="q">Search videos</label>
+      <input id="q" name="q" type="search" autocomplete="off" placeholder="Try birds, shadows, or paper crafts" required>
+      <button class="primary-button" type="submit">Search</button>
+    </form>
+    <% if (childProfile) { %>
+      <p class="muted">Searching for <%= childProfile.displayName %>.</p>
+    <% } %>
+  </section>
+</main>
+
+<%- include('../partials/footer') %>

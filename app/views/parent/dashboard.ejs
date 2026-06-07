@@ -1,0 +1,51 @@
+<%- include('../partials/head', { title }) %>
+<%- include('../partials/header') %>
+
+<main class="page">
+  <section class="page-heading">
+    <p class="eyebrow">Parent dashboard</p>
+    <h1><%= dashboard.household.name %></h1>
+    <p class="muted">A placeholder for household policy, child profiles, and review queues.</p>
+  </section>
+
+  <section class="dashboard-grid" aria-label="Dashboard summary">
+    <article class="panel">
+      <h2>Child profiles</h2>
+      <% if (dashboard.children.length) { %>
+        <ul class="simple-list">
+          <% dashboard.children.forEach((child) => { %>
+            <li>
+              <strong><%= child.display_name %></strong>
+              <span>Profile only, not a login account</span>
+            </li>
+          <% }) %>
+        </ul>
+      <% } else { %>
+        <p class="muted">No child profiles yet.</p>
+      <% } %>
+    </article>
+
+    <article class="panel">
+      <h2>Recent searches</h2>
+      <% if (dashboard.recentSearches.length) { %>
+        <ul class="simple-list">
+          <% dashboard.recentSearches.forEach((event) => { %>
+            <li>
+              <strong><%= event.query %></strong>
+              <span><%= event.result_count %> result(s)</span>
+            </li>
+          <% }) %>
+        </ul>
+      <% } else { %>
+        <p class="muted">No searches have been logged yet.</p>
+      <% } %>
+    </article>
+
+    <article class="panel">
+      <h2>Policy defaults</h2>
+      <p class="muted">Results are capped at three. Shorts and livestreams are blocked by default.</p>
+    </article>
+  </section>
+</main>
+
+<%- include('../partials/footer') %>

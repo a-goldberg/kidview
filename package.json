@@ -1,0 +1,28 @@
+{
+  "name": "kidview",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Household-controlled child video discovery gateway.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "db:migrate": "node scripts/migrate.js",
+    "db:seed": "node scripts/seed.js",
+    "db:reset": "rm -f data/kidview.sqlite data/kidview.sqlite-* && npm run db:migrate && npm run db:seed"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "better-sqlite3": "^11.10.0",
+    "better-sqlite3-session-store": "^0.1.0",
+    "dotenv": "^16.5.0",
+    "ejs": "^3.1.10",
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.5.0",
+    "express-session": "^1.18.1",
+    "helmet": "^8.1.0"
+  }
+}

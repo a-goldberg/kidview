@@ -1,0 +1,39 @@
+<%- include('../partials/head', { title }) %>
+<%- include('../partials/header') %>
+
+<main class="page">
+  <section class="page-heading">
+    <p class="eyebrow">Search results</p>
+    <h1><%= query ? query : 'Search' %></h1>
+    <p class="muted">KidView shows up to three choices at a time.</p>
+  </section>
+
+  <% if (!query) { %>
+    <section class="panel">
+      <p>Start with a search term.</p>
+      <a class="secondary-button" href="/child/search">Go to search</a>
+    </section>
+  <% } else { %>
+    <section class="result-grid" aria-label="Video results">
+      <% results.forEach((result) => { %>
+        <article class="video-card">
+          <div class="video-icon">
+            <img src="<%= result.iconPath %>" alt="" aria-hidden="true">
+          </div>
+          <div class="video-card-body">
+            <p class="category"><%= result.categoryLabel %> · <%= result.duration %></p>
+            <h2><%= result.title %></h2>
+            <p><%= result.summary %></p>
+            <p class="channel"><%= result.channel %></p>
+          </div>
+        </article>
+      <% }) %>
+    </section>
+
+    <p class="center-action">
+      <a class="secondary-button" href="/child/search">Search again</a>
+    </p>
+  <% } %>
+</main>
+
+<%- include('../partials/footer') %>

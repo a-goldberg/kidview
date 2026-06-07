@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="Science">
+  <rect width="96" height="96" rx="16" fill="#4d6f9f"/>
+  <path d="M39 19h18v9l17 32c4 8-1 17-10 17H32c-9 0-14-9-10-17l17-32v-9z" fill="#ffffff"/>
+  <path d="M33 61h30" stroke="#4d6f9f" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="40" cy="67" r="4" fill="#4d6f9f"/>
+  <circle cx="56" cy="55" r="4" fill="#4d6f9f"/>
+</svg>
