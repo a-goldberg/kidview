@@ -87,9 +87,9 @@ assets/
 - Search uses mock database candidates only. There is no YouTube, OpenAI, transcript, or external service integration.
 - Blocked, pending-review, unknown, Short, and livestream candidates are not shown to children.
 
-## Testing The Mock Review Flow
+## Testing The Fixture Review Flow
 
-The seed data creates more mock candidates than KidView shows to children. Use `nature` as the demo search term:
+The seed data loads YouTube-shaped fixture candidates from `app/services/fixtures/youtubeSampleCandidates.js`. These are local test records only; the app still does not call the YouTube API.
 
 1. Reset and reseed the local database after schema changes:
 
@@ -103,15 +103,25 @@ The seed data creates more mock candidates than KidView shows to children. Use `
    npm run dev
    ```
 
-3. Visit `http://localhost:3002/child/search` and search for `nature`.
+3. Visit `http://localhost:3002/child/search` and try fixture-backed searches:
 
-   You should see at most three child-facing cards. They use local category icons and link to KidView placeholder video pages.
+   - `science` shows currently approved/limited educational candidates.
+   - `animation` starts hidden until a parent approves the Pixar sample.
+   - `drama` stays hidden because it requires review.
+   - `otters` shows through an approved channel decision.
+
+   Child results should show at most three cards. They use local category icons and link to KidView placeholder video pages.
 
 4. Log in at `http://localhost:3002/auth/login`.
 
 5. Visit `http://localhost:3002/parent/reviews`.
 
 The review page demonstrates `allow`, `allow_limited`, `review_required`, `block`, `review`, `unknown`, Short, livestream, and channel decision cases. Parent notes remain parent-facing.
+
+## Planned Features
+
+- Parent decision history: add a parent-facing page for searching, filtering, and editing prior video and channel decisions. This should make it easy to recover from mistakes such as accidentally blocking a video or approving the wrong channel.
+- Review queue continuity: update parent review actions so submitting a decision does not jump the reviewer back to the top of a long queue. Prefer a small vanilla JavaScript progressive enhancement that records the decision without a full page refresh, with a non-JavaScript fallback that preserves scroll position or returns to the reviewed item.
 
 ## Useful Scripts
 

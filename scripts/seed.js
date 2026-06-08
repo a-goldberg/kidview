@@ -1,6 +1,7 @@
 const bcrypt = require('bcrypt');
 const db = require('../app/db/database');
 const config = require('../app/config');
+const youtubeSampleCandidates = require('../app/services/fixtures/youtubeSampleCandidates');
 
 const existingHousehold = db.prepare('SELECT id FROM households LIMIT 1').get();
 
@@ -9,12 +10,128 @@ if (existingHousehold) {
   process.exit(0);
 }
 
+const CATEGORY_RULES = [
+  {
+    pattern: /nature|blue|otter|cat|rainforest|sea|animal|parkour/i,
+    primaryCategory: 'Animals',
+    iconKey: 'animals'
+  },
+  {
+    pattern: /pixar|animation|animated|slime|toy|craft|treehouse|bouncing ball/i,
+    primaryCategory: 'Art',
+    iconKey: 'art'
+  },
+  {
+    pattern: /fraction|math|science|water|physics|history|weapon/i,
+    primaryCategory: 'Science',
+    iconKey: 'science'
+  }
+];
+
+const CHANNEL_DECISIONS = {
+  UCpVm7bg6pXKo1Pr6k5kx7vA: {
+    decision: 'approved',
+    reason: 'Seeded as a trusted science-style channel.'
+  },
+  UC_REVIEW_FIRST_CHANNEL: {
+    decision: 'review_first',
+    reason: 'Teen drama channel should be reviewed before child display.'
+  },
+  UC_BLOCKED_CHANNEL_ID: {
+    decision: 'blocked',
+    reason: 'Dangerous stunt channel is blocked for this household.'
+  }
+};
+
+const VIDEO_DECISIONS = {
+  '3g246c6Bv58': {
+    decision: 'allow',
+    reason: 'Good science/nature explainer for the demo household.'
+  },
+  tra66666666: {
+    decision: 'allow_limited',
+    reason: 'Useful educational video, but keep it in limited child-facing contexts.'
+  },
+  dQw4w9WgXcQ: {
+    decision: 'block',
+    reason: 'Music video is outside this child discovery policy.'
+  },
+  par88888888: {
+    decision: 'review_required',
+    reason: 'History topic may be educational but includes weapon discussion.'
+  }
+};
+
+const REVIEW_STATUSES = {
+  rev22222222: {
+    status: 'review',
+    reason: 'Needs parent review because it centers on teen drama and rumors.'
+  },
+  unk33333333: {
+    status: 'unknown',
+    reason: 'New creator with too little household context.'
+  },
+  mdl44444444: {
+    status: 'review',
+    reason: 'Game content references poison/toxin mechanics.'
+  },
+  lim77777777: {
+    status: 'review',
+    reason: 'High-stimulation slime content should be reviewed before approval.'
+  },
+  not55555555: {
+    status: 'unknown',
+    reason: 'No-speech ambient audio needs a parent decision.'
+  }
+};
+
+function classifyCandidate(candidate) {
+  const haystack = `${candidate.title} ${candidate.description} ${candidate.channelTitle}`;
+  const matchedRule = CATEGORY_RULES.find((rule) => rule.pattern.test(haystack));
+  const labels = [];
+
+  if (candidate.isShort) labels.push('short');
+  if (candidate.isLivestream) labels.push('livestream');
+  if (!candidate.embeddable) labels.push('not-embeddable');
+  if (/toy|slime|surprise|mystery|clickbait|won't believe/i.test(haystack)) labels.push('high-stimulation');
+  if (/math|fraction|science|nature|history|animation/i.test(haystack)) labels.push('learning');
+  if (/dangerous|stunt|weapon|flamethrower|poison|toxin/i.test(haystack)) labels.push('needs-care');
+
+  return {
+    primaryCategory: matchedRule ? matchedRule.primaryCategory : 'General',
+    iconKey: matchedRule ? matchedRule.iconKey : 'general',
+    labels
+  };
+}
+
+function confidenceFor(candidate) {
+  if (VIDEO_DECISIONS[candidate.externalVideoId]) return 0.95;
+  if (CHANNEL_DECISIONS[candidate.channelExternalId]) return 0.88;
+  if (REVIEW_STATUSES[candidate.externalVideoId]) return 0.72;
+  if (candidate.isShort || candidate.isLivestream || !candidate.embeddable) return 0.4;
+  return 0.62;
+}
+
+function childExplanationFor(candidate, classification) {
+  if (classification.primaryCategory === 'Animals') {
+    return 'A KidView candidate about nature, animals, or the world around us.';
+  }
+
+  if (classification.primaryCategory === 'Science') {
+    return 'A KidView candidate that explains an idea in a simple way.';
+  }
+
+  if (classification.primaryCategory === 'Art') {
+    return 'A KidView candidate about making, building, or animation.';
+  }
+
+  return 'A KidView candidate waiting for household review.';
+}
+
 const passwordHash = bcrypt.hashSync(config.seedParentPassword, 12);
 
 db.transaction(() => {
-  const household = db
-    .prepare('INSERT INTO households (name) VALUES (?)')
-    .run('Demo Household');
+  const household = db.prepare('INSERT INTO households (name) VALUES (?)').run('Demo Household');
 
   const policy = db
     .prepare(
@@ -28,21 +145,25 @@ db.transaction(() => {
       'Shows at most three calm, approved discovery results.'
     );
 
-  db.prepare(
-    `INSERT INTO parent_users (household_id, email, password_hash, display_name)
-     VALUES (?, ?, ?, ?)`
-  ).run(household.lastInsertRowid, config.seedParentEmail, passwordHash, 'Demo Parent');
+  const parentUser = db
+    .prepare(
+      `INSERT INTO parent_users (household_id, email, password_hash, display_name)
+       VALUES (?, ?, ?, ?)`
+    )
+    .run(household.lastInsertRowid, config.seedParentEmail, passwordHash, 'Demo Parent');
 
   db.prepare(
     `INSERT INTO child_profiles (household_id, policy_profile_id, display_name, birth_year)
      VALUES (?, ?, ?, ?)`
   ).run(household.lastInsertRowid, policy.lastInsertRowid, 'Demo Child', 2018);
 
-  const parentUser = db.prepare('SELECT id FROM parent_users WHERE email = ?').get(config.seedParentEmail);
-
   const insertChannel = db.prepare(
     `INSERT INTO channels (source, external_id, title)
-     VALUES ('mock', ?, ?)`
+     VALUES (?, ?, ?)
+     ON CONFLICT(source, external_id) DO UPDATE SET
+      title = excluded.title,
+      updated_at = CURRENT_TIMESTAMP
+     RETURNING id`
   );
   const insertVideo = db.prepare(
     `INSERT INTO videos (
@@ -61,238 +182,91 @@ db.transaction(() => {
       is_short,
       is_livestream
     )
-    VALUES (?, 'mock', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    RETURNING id`
   );
 
-  const channels = {
-    curiousNest: insertChannel.run('channel-curious-nest', 'Curious Nest').lastInsertRowid,
-    smallScience: insertChannel.run('channel-small-science', 'Small Science Lab').lastInsertRowid,
-    tabletopArt: insertChannel.run('channel-tabletop-art', 'Tabletop Art Time').lastInsertRowid,
-    loudArcade: insertChannel.run('channel-loud-arcade', 'Loud Arcade Clips').lastInsertRowid,
-    liveNow: insertChannel.run('channel-live-now', 'Live Now Learning').lastInsertRowid
-  };
+  const channelIdsByExternalId = new Map();
+  const videoIdsByExternalId = new Map();
 
-  const videos = {
-    allowedBirds: insertVideo.run(
-      channels.curiousNest,
-      'video-allowed-birds',
-      'Nature Walk: Backyard Birds',
-      'A quiet nature walk with bird calls, colors, and simple observation prompts.',
-      480,
-      'Animals',
-      'animals',
-      JSON.stringify(['nature', 'birds', 'calm']),
-      0.96,
-      'A calm nature video about noticing birds outside.',
-      'Seeded as directly allowed for the demo household.',
-      0,
-      0
-    ).lastInsertRowid,
-    channelAllowedShadows: insertVideo.run(
-      channels.smallScience,
-      'video-channel-allowed-shadows',
-      'Nature Science: Why Shadows Move',
-      'A simple explanation of sunlight, trees, and changing shadows.',
-      390,
-      'Science',
-      'science',
-      JSON.stringify(['nature', 'science', 'sunlight']),
-      0.91,
-      'A simple science video about sunlight and shadows.',
-      'Allowed through the Small Science Lab channel decision.',
-      0,
-      0
-    ).lastInsertRowid,
-    limitedLeaves: insertVideo.run(
-      channels.smallScience,
-      'video-limited-leaves',
-      'Nature Science: How Leaves Drink',
-      'A gentle look at stems, leaves, and water movement.',
-      430,
-      'Science',
-      'science',
-      JSON.stringify(['nature', 'plants', 'science']),
-      0.88,
-      'A gentle plant science video.',
-      'Allowed with limits for the demo household.',
-      0,
-      0
-    ).lastInsertRowid,
-    blockedThunder: insertVideo.run(
-      channels.curiousNest,
-      'video-blocked-thunder',
-      'Nature Storm Sounds at Night',
-      'A dramatic storm sound compilation with sudden loud moments.',
-      540,
-      'Animals',
-      'animals',
-      JSON.stringify(['nature', 'storms', 'loud']),
-      0.86,
-      'A nature video about storms.',
-      'Parent-facing reason: too intense for the demo child profile.',
-      0,
-      0
-    ).lastInsertRowid,
-    reviewOcean: insertVideo.run(
-      channels.curiousNest,
-      'video-review-ocean',
-      'Nature Mystery: Deep Ocean Creatures',
-      'A fascinating ocean animal video that needs a parent review first.',
-      620,
-      'Animals',
-      'animals',
-      JSON.stringify(['nature', 'ocean', 'review']),
-      0.84,
-      'An ocean animal video.',
-      'Needs parent review because it mentions predator behavior.',
-      0,
-      0
-    ).lastInsertRowid,
-    reviewRequiredRocks: insertVideo.run(
-      channels.tabletopArt,
-      'video-review-required-rocks',
-      'Nature Craft: Paint Story Rocks',
-      'A craft activity using rocks, paint, and simple storytelling.',
-      510,
-      'Art',
-      'art',
-      JSON.stringify(['nature', 'crafts', 'unknown']),
-      0.81,
-      'A craft video about painted rocks.',
-      'Parent marked this as review-required.',
-      0,
-      0
-    ).lastInsertRowid,
-    unknownMoss: insertVideo.run(
-      channels.curiousNest,
-      'video-unknown-moss',
-      'Nature Close-Up: Moss and Tiny Forests',
-      'A quiet close-up video that has not received a parent decision yet.',
-      450,
-      'Science',
-      'science',
-      JSON.stringify(['nature', 'plants', 'unknown']),
-      0.79,
-      'A quiet plant observation video.',
-      'No household decision has been made yet.',
-      0,
-      0
-    ).lastInsertRowid,
-    shortAnts: insertVideo.run(
-      channels.curiousNest,
-      'video-short-ants',
-      'Nature Short: Ants Build Fast',
-      'A short-form clip about ants.',
-      42,
-      'Animals',
-      'animals',
-      JSON.stringify(['nature', 'shorts']),
-      0.78,
-      'A quick animal clip.',
-      'Filtered because Shorts are not allowed.',
-      1,
-      0
-    ).lastInsertRowid,
-    liveSpace: insertVideo.run(
-      channels.liveNow,
-      'video-live-space',
-      'Nature Live: Night Sky Watch',
-      'A livestream-style sky watching session.',
-      7200,
-      'Science',
-      'science',
-      JSON.stringify(['nature', 'livestream']),
-      0.77,
-      'A live sky watch.',
-      'Filtered because livestreams are not allowed.',
-      0,
-      1
-    ).lastInsertRowid,
-    blockedChannel: insertVideo.run(
-      channels.loudArcade,
-      'video-channel-blocked',
-      'Nature Game: Loud Forest Chase',
-      'Fast arcade gameplay with loud effects and forest graphics.',
-      580,
-      'General',
-      'general',
-      JSON.stringify(['nature', 'games', 'loud']),
-      0.76,
-      'A game video with forest scenes.',
-      'Blocked through the Loud Arcade Clips channel decision.',
-      0,
-      0
-    ).lastInsertRowid
-  };
+  for (const candidate of youtubeSampleCandidates) {
+    const channelId =
+      channelIdsByExternalId.get(candidate.channelExternalId) ||
+      insertChannel.get(candidate.source, candidate.channelExternalId, candidate.channelTitle).id;
+    const classification = classifyCandidate(candidate);
+    const parentExplanation =
+      VIDEO_DECISIONS[candidate.externalVideoId]?.reason ||
+      REVIEW_STATUSES[candidate.externalVideoId]?.reason ||
+      CHANNEL_DECISIONS[candidate.channelExternalId]?.reason ||
+      'No household decision has been made yet.';
+    const videoId = insertVideo.get(
+      channelId,
+      candidate.source,
+      candidate.externalVideoId,
+      candidate.title,
+      candidate.description,
+      candidate.durationSeconds,
+      classification.primaryCategory,
+      classification.iconKey,
+      JSON.stringify(classification.labels),
+      confidenceFor(candidate),
+      childExplanationFor(candidate, classification),
+      parentExplanation,
+      candidate.isShort ? 1 : 0,
+      candidate.isLivestream ? 1 : 0
+    ).id;
 
-  db.prepare(
+    channelIdsByExternalId.set(candidate.channelExternalId, channelId);
+    videoIdsByExternalId.set(candidate.externalVideoId, videoId);
+  }
+
+  const insertVideoDecision = db.prepare(
     `INSERT INTO household_video_decisions
       (household_id, video_id, decision, parent_facing_reason, decided_by_parent_user_id)
-     VALUES (?, ?, 'allow', ?, ?)`
-  ).run(household.lastInsertRowid, videos.allowedBirds, 'Good calm nature fit.', parentUser.id);
-
-  db.prepare(
-    `INSERT INTO household_video_decisions
-      (household_id, video_id, decision, parent_facing_reason, decided_by_parent_user_id)
-     VALUES (?, ?, 'allow_limited', ?, ?)`
-  ).run(
-    household.lastInsertRowid,
-    videos.limitedLeaves,
-    'Allow, but keep it in the shorter child search list.',
-    parentUser.id
+     VALUES (?, ?, ?, ?, ?)`
   );
 
-  db.prepare(
-    `INSERT INTO household_video_decisions
-      (household_id, video_id, decision, parent_facing_reason, decided_by_parent_user_id)
-     VALUES (?, ?, 'review_required', ?, ?)`
-  ).run(
-    household.lastInsertRowid,
-    videos.reviewRequiredRocks,
-    'Needs an adult preview before it can appear.',
-    parentUser.id
-  );
+  for (const [externalVideoId, decision] of Object.entries(VIDEO_DECISIONS)) {
+    insertVideoDecision.run(
+      household.lastInsertRowid,
+      videoIdsByExternalId.get(externalVideoId),
+      decision.decision,
+      decision.reason,
+      parentUser.lastInsertRowid
+    );
+  }
 
-  db.prepare(
-    `INSERT INTO household_video_decisions
-      (household_id, video_id, decision, parent_facing_reason, decided_by_parent_user_id)
-     VALUES (?, ?, 'block', ?, ?)`
-  ).run(household.lastInsertRowid, videos.blockedThunder, 'Too intense for bedtime searching.', parentUser.id);
-
-  db.prepare(
+  const insertChannelDecision = db.prepare(
     `INSERT INTO household_channel_decisions
       (household_id, channel_id, decision, parent_facing_reason, decided_by_parent_user_id)
-     VALUES (?, ?, 'approved', ?, ?)`
-  ).run(household.lastInsertRowid, channels.smallScience, 'Trusted calm science channel.', parentUser.id);
-
-  db.prepare(
-    `INSERT INTO household_channel_decisions
-      (household_id, channel_id, decision, parent_facing_reason, decided_by_parent_user_id)
-     VALUES (?, ?, 'review_first', ?, ?)`
-  ).run(
-    household.lastInsertRowid,
-    channels.tabletopArt,
-    'Craft channel should be reviewed before child display.',
-    parentUser.id
+     VALUES (?, ?, ?, ?, ?)`
   );
 
-  db.prepare(
-    `INSERT INTO household_channel_decisions
-      (household_id, channel_id, decision, parent_facing_reason, decided_by_parent_user_id)
-     VALUES (?, ?, 'blocked', ?, ?)`
-  ).run(household.lastInsertRowid, channels.loudArcade, 'Channel tone is too loud for KidView.', parentUser.id);
+  for (const [externalChannelId, decision] of Object.entries(CHANNEL_DECISIONS)) {
+    insertChannelDecision.run(
+      household.lastInsertRowid,
+      channelIdsByExternalId.get(externalChannelId),
+      decision.decision,
+      decision.reason,
+      parentUser.lastInsertRowid
+    );
+  }
 
-  db.prepare(
+  const insertReview = db.prepare(
     `INSERT INTO moderation_reviews (household_id, video_id, status, parent_facing_reason)
-     VALUES (?, ?, 'review', ?)`
-  ).run(household.lastInsertRowid, videos.reviewOcean, 'Review ocean predator language before allowing.');
+     VALUES (?, ?, ?, ?)`
+  );
 
-  db.prepare(
-    `INSERT INTO moderation_reviews (household_id, video_id, status, parent_facing_reason)
-     VALUES (?, ?, 'unknown', ?)`
-  ).run(household.lastInsertRowid, videos.unknownMoss, 'No review signal has been recorded yet.');
+  for (const [externalVideoId, review] of Object.entries(REVIEW_STATUSES)) {
+    insertReview.run(
+      household.lastInsertRowid,
+      videoIdsByExternalId.get(externalVideoId),
+      review.status,
+      review.reason
+    );
+  }
 })();
 
-console.log('Seeded Demo Household.');
+console.log(`Seeded Demo Household with ${youtubeSampleCandidates.length} YouTube sample candidates.`);
 console.log(`Parent login: ${config.seedParentEmail}`);
 console.log(`Parent password: ${config.seedParentPassword}`);
