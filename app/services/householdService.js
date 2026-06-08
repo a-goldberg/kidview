@@ -71,8 +71,25 @@ function getParentDashboard(householdId) {
   };
 }
 
-function getReviewQueue(householdId) {
-  const videos = db
+function getReviewQueue(householdId, filters = {}) {
+  return getReviewQueueWithFilters(householdId, filters);
+}
+
+function reviewStatusFor(video) {
+  if (video.is_short) return 'short';
+  if (video.is_livestream) return 'livestream';
+  if (video.channel_decision === 'blocked') return 'channel_blocked';
+  if (video.channel_decision === 'review_first') return 'channel_review_first';
+  if (video.review_status) return video.review_status;
+  return 'undecided';
+}
+
+function getReviewQueueWithFilters(householdId, filters = {}) {
+  const search = String(filters.search || '').trim();
+  const status = String(filters.status || 'all');
+  const likeSearch = search.toLowerCase();
+
+  let videos = db
     .prepare(
       `SELECT
         videos.id,
@@ -121,10 +138,35 @@ function getReviewQueue(householdId) {
     .all(householdId, householdId, householdId)
     .map((video) => ({
       ...video,
-      labels: parseLabels(video.labels_json)
+      labels: parseLabels(video.labels_json),
+      queue_status: reviewStatusFor(video)
     }));
 
-  const channels = db
+  if (search) {
+    videos = videos.filter((video) => {
+      const haystack = [
+        video.title,
+        video.description,
+        video.channel_title,
+        video.parent_explanation,
+        video.review_reason,
+        video.channel_decision,
+        video.queue_status,
+        ...video.labels
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+
+      return haystack.includes(likeSearch);
+    });
+  }
+
+  if (status !== 'all') {
+    videos = videos.filter((video) => video.queue_status === status);
+  }
+
+  let channels = db
     .prepare(
       `SELECT
         channels.id,
@@ -139,7 +181,110 @@ function getReviewQueue(householdId) {
     )
     .all(householdId);
 
+  if (search) {
+    channels = channels.filter((channel) => {
+      const haystack = [
+        channel.title,
+        channel.external_id,
+        channel.decision,
+        channel.parent_facing_reason
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+
+      return haystack.includes(likeSearch);
+    });
+  }
+
   return {
+    filters: {
+      search,
+      status
+    },
+    videos,
+    channels
+  };
+}
+
+function getDecisionHistory(householdId, filters = {}) {
+  const search = String(filters.search || '').trim();
+  const kind = filters.kind === 'channel' ? 'channel' : filters.kind === 'video' ? 'video' : 'all';
+  const likeSearch = `%${search}%`;
+  const params = {
+    householdId,
+    search: likeSearch
+  };
+
+  const videos =
+    kind === 'channel'
+      ? []
+      : db
+          .prepare(
+            `SELECT
+              household_video_decisions.id,
+              household_video_decisions.video_id,
+              household_video_decisions.decision,
+              household_video_decisions.parent_facing_reason,
+              household_video_decisions.updated_at,
+              videos.title,
+              videos.duration_seconds,
+              videos.primary_category,
+              videos.labels_json,
+              channels.title AS channel_title
+            FROM household_video_decisions
+            JOIN videos ON videos.id = household_video_decisions.video_id
+            LEFT JOIN channels ON channels.id = videos.channel_id
+            WHERE household_video_decisions.household_id = @householdId
+              AND (
+                @search = '%%'
+                OR videos.title LIKE @search
+                OR videos.description LIKE @search
+                OR channels.title LIKE @search
+                OR household_video_decisions.decision LIKE @search
+                OR household_video_decisions.parent_facing_reason LIKE @search
+              )
+            ORDER BY household_video_decisions.updated_at DESC, household_video_decisions.id DESC`
+          )
+          .all(params)
+          .map((video) => ({
+            ...video,
+            labels: parseLabels(video.labels_json)
+          }));
+
+  const channels =
+    kind === 'video'
+      ? []
+      : db
+          .prepare(
+            `SELECT
+              household_channel_decisions.id,
+              household_channel_decisions.channel_id,
+              household_channel_decisions.decision,
+              household_channel_decisions.parent_facing_reason,
+              household_channel_decisions.updated_at,
+              channels.title,
+              channels.source,
+              channels.external_id
+            FROM household_channel_decisions
+            JOIN channels ON channels.id = household_channel_decisions.channel_id
+            WHERE household_channel_decisions.household_id = @householdId
+              AND (
+                @search = '%%'
+                OR channels.title LIKE @search
+                OR channels.external_id LIKE @search
+                OR household_channel_decisions.decision LIKE @search
+                OR household_channel_decisions.parent_facing_reason LIKE @search
+              )
+            ORDER BY household_channel_decisions.updated_at DESC, household_channel_decisions.id DESC`
+          )
+          .all(params);
+
+  return {
+    filters: {
+      search,
+      kind
+    },
     videos,
     channels
   };
@@ -148,5 +293,6 @@ function getReviewQueue(householdId) {
 module.exports = {
   getFirstChildProfile,
   getParentDashboard,
-  getReviewQueue
+  getReviewQueue,
+  getDecisionHistory
 };

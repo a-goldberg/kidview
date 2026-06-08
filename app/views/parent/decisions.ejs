@@ -1,0 +1,110 @@
+<%- include('../partials/head', { title }) %>
+<%- include('../partials/header') %>
+
+<main class="page parent-page">
+  <section class="page-heading compact-heading">
+    <p class="eyebrow">Parent decisions</p>
+    <h1>Decision history</h1>
+    <p class="muted">Find past video and channel decisions, then correct them when needed.</p>
+  </section>
+
+  <form class="filter-bar" action="/parent/decisions" method="get">
+    <label>
+      <span>Search decisions</span>
+      <input name="search" value="<%= history.filters.search %>" placeholder="Title, channel, reason, decision">
+    </label>
+    <label>
+      <span>Type</span>
+      <select name="kind">
+        <option value="all" <%= history.filters.kind === 'all' ? 'selected' : '' %>>Videos and channels</option>
+        <option value="video" <%= history.filters.kind === 'video' ? 'selected' : '' %>>Videos only</option>
+        <option value="channel" <%= history.filters.kind === 'channel' ? 'selected' : '' %>>Channels only</option>
+      </select>
+    </label>
+    <button class="secondary-button small-button" type="submit">Filter</button>
+  </form>
+
+  <section class="decision-history">
+    <% if (history.videos.length) { %>
+      <div class="decision-section">
+        <h2>Video decisions</h2>
+        <% history.videos.forEach((video) => { %>
+          <article class="history-row">
+            <div class="history-main">
+              <p class="category"><%= video.primary_category %> · <%= Math.round(video.duration_seconds / 60) %> min</p>
+              <h3><%= video.title %></h3>
+              <p class="muted"><%= video.channel_title %></p>
+              <p class="review-reason compact-note"><%= video.parent_facing_reason || 'No parent note.' %></p>
+              <ul class="label-list compact-labels">
+                <% video.labels.forEach((label) => { %>
+                  <li><%= label %></li>
+                <% }) %>
+              </ul>
+            </div>
+            <form class="decision-form compact-decision-form" action="/parent/decisions/videos/<%= video.video_id %>" method="post" data-async-decision>
+              <input type="hidden" name="kind" value="<%= history.filters.kind %>">
+              <input type="hidden" name="search" value="<%= history.filters.search %>">
+              <label>
+                <span>Decision</span>
+                <select name="decision">
+                  <option value="allow" <%= video.decision === 'allow' ? 'selected' : '' %>>Allow</option>
+                  <option value="allow_limited" <%= video.decision === 'allow_limited' ? 'selected' : '' %>>Allow limited</option>
+                  <option value="review_required" <%= video.decision === 'review_required' ? 'selected' : '' %>>Review required</option>
+                  <option value="block" <%= video.decision === 'block' ? 'selected' : '' %>>Block</option>
+                </select>
+              </label>
+              <label>
+                <span>Note</span>
+                <input name="reason" value="<%= video.parent_facing_reason || '' %>">
+              </label>
+              <button class="primary-button small-button" type="submit">Save</button>
+              <p class="decision-status" role="status"></p>
+            </form>
+          </article>
+        <% }) %>
+      </div>
+    <% } %>
+
+    <% if (history.channels.length) { %>
+      <div class="decision-section">
+        <h2>Channel decisions</h2>
+        <% history.channels.forEach((channel) => { %>
+          <article class="history-row">
+            <div class="history-main">
+              <p class="category"><%= channel.source %></p>
+              <h3><%= channel.title %></h3>
+              <p class="muted"><%= channel.external_id %></p>
+              <p class="review-reason compact-note"><%= channel.parent_facing_reason || 'No parent note.' %></p>
+            </div>
+            <form class="decision-form compact-decision-form" action="/parent/decisions/channels/<%= channel.channel_id %>" method="post" data-async-decision>
+              <input type="hidden" name="kind" value="<%= history.filters.kind %>">
+              <input type="hidden" name="search" value="<%= history.filters.search %>">
+              <label>
+                <span>Decision</span>
+                <select name="decision">
+                  <option value="approved" <%= channel.decision === 'approved' ? 'selected' : '' %>>Approved</option>
+                  <option value="review_first" <%= channel.decision === 'review_first' ? 'selected' : '' %>>Review first</option>
+                  <option value="blocked" <%= channel.decision === 'blocked' ? 'selected' : '' %>>Blocked</option>
+                </select>
+              </label>
+              <label>
+                <span>Note</span>
+                <input name="reason" value="<%= channel.parent_facing_reason || '' %>">
+              </label>
+              <button class="primary-button small-button" type="submit">Save</button>
+              <p class="decision-status" role="status"></p>
+            </form>
+          </article>
+        <% }) %>
+      </div>
+    <% } %>
+
+    <% if (!history.videos.length && !history.channels.length) { %>
+      <article class="panel">
+        <p class="muted">No matching decisions found.</p>
+      </article>
+    <% } %>
+  </section>
+</main>
+
+<%- include('../partials/footer') %>
