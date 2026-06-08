@@ -1,16 +1,37 @@
 <%- include('../partials/head', { title }) %>
 <%- include('../partials/header') %>
 
-<main class="page">
-  <section class="page-heading">
+<main class="page parent-page">
+  <section class="page-heading compact-heading">
     <p class="eyebrow">Parent reviews</p>
     <h1>Review videos</h1>
     <p class="muted">Parent-facing reasons stay here and are never shown in the child UI.</p>
   </section>
 
+  <form class="filter-bar review-filter-bar" action="/parent/reviews" method="get">
+    <label>
+      <span>Search queue</span>
+      <input name="search" value="<%= reviewQueue.filters.search %>" placeholder="Title, channel, label, reason">
+    </label>
+    <label>
+      <span>Status</span>
+      <select name="status">
+        <option value="all" <%= reviewQueue.filters.status === 'all' ? 'selected' : '' %>>All review items</option>
+        <option value="review" <%= reviewQueue.filters.status === 'review' ? 'selected' : '' %>>Review</option>
+        <option value="unknown" <%= reviewQueue.filters.status === 'unknown' ? 'selected' : '' %>>Unknown</option>
+        <option value="undecided" <%= reviewQueue.filters.status === 'undecided' ? 'selected' : '' %>>Undecided</option>
+        <option value="short" <%= reviewQueue.filters.status === 'short' ? 'selected' : '' %>>Shorts</option>
+        <option value="livestream" <%= reviewQueue.filters.status === 'livestream' ? 'selected' : '' %>>Livestreams</option>
+        <option value="channel_review_first" <%= reviewQueue.filters.status === 'channel_review_first' ? 'selected' : '' %>>Channel review first</option>
+        <option value="channel_blocked" <%= reviewQueue.filters.status === 'channel_blocked' ? 'selected' : '' %>>Channel blocked</option>
+      </select>
+    </label>
+    <button class="secondary-button small-button" type="submit">Filter</button>
+  </form>
+
   <section class="review-layout">
     <div class="review-list">
-      <h2>Videos</h2>
+      <h2>Videos <span class="count-pill"><%= reviewQueue.videos.length %></span></h2>
       <% if (!reviewQueue.videos.length) { %>
         <article class="panel">
           <p class="muted">No videos need review.</p>
@@ -18,12 +39,11 @@
       <% } %>
 
       <% reviewQueue.videos.forEach((video) => { %>
-        <article class="review-card">
+        <article class="review-card" id="video-<%= video.id %>" data-decision-card>
           <div>
-            <p class="category"><%= video.primary_category %> · <%= Math.round(video.duration_seconds / 60) %> min</p>
+            <p class="category"><%= video.primary_category %> · <%= Math.round(video.duration_seconds / 60) %> min · <%= video.queue_status %></p>
             <h3><%= video.title %></h3>
             <p class="muted"><%= video.channel_title %></p>
-            <p><%= video.description %></p>
             <ul class="label-list">
               <% video.labels.forEach((label) => { %>
                 <li><%= label %></li>
@@ -31,13 +51,17 @@
               <% if (video.is_short) { %><li>Short</li><% } %>
               <% if (video.is_livestream) { %><li>Livestream</li><% } %>
             </ul>
-            <p class="review-reason"><%= video.review_reason || video.parent_explanation || 'No parent note yet.' %></p>
             <% if (video.channel_decision) { %>
               <p class="muted">Channel decision: <strong><%= video.channel_decision %></strong></p>
             <% } %>
+            <details class="info-disclosure">
+              <summary>Details</summary>
+              <p><%= video.description %></p>
+              <p class="review-reason"><%= video.review_reason || video.parent_explanation || 'No parent note yet.' %></p>
+            </details>
           </div>
 
-          <form class="decision-form" action="/parent/reviews/videos/<%= video.id %>/decision" method="post">
+          <form class="decision-form" action="/parent/reviews/videos/<%= video.id %>/decision" method="post" data-async-decision data-remove-on-success="true">
             <label>
               <span>Parent note</span>
               <input name="reason" value="<%= video.video_decision_reason || video.review_reason || video.parent_explanation || '' %>">
@@ -48,25 +72,27 @@
               <button class="secondary-button" type="submit" name="decision" value="review_required">Review required</button>
               <button class="danger-button" type="submit" name="decision" value="block">Block video</button>
             </div>
+            <p class="decision-status" role="status"></p>
           </form>
         </article>
       <% }) %>
     </div>
 
     <aside class="panel">
-      <h2>Channels</h2>
+      <h2>Channels <span class="count-pill"><%= reviewQueue.channels.length %></span></h2>
       <p class="muted">A channel decision applies to future videos unless a video-specific decision overrides it.</p>
       <div class="channel-decision-list">
         <% reviewQueue.channels.forEach((channel) => { %>
-          <form class="channel-form" action="/parent/reviews/channels/<%= channel.id %>/decision" method="post">
+          <form class="channel-form" action="/parent/reviews/channels/<%= channel.id %>/decision" method="post" data-async-decision>
             <strong><%= channel.title %></strong>
-            <span class="muted">Current: <%= channel.decision || 'none' %></span>
+            <span class="muted">Current: <strong data-decision-current><%= channel.decision || 'none' %></strong></span>
             <input name="reason" placeholder="Parent note" value="<%= channel.parent_facing_reason || '' %>">
             <div class="button-row">
               <button class="secondary-button" type="submit" name="decision" value="approved">Approve</button>
               <button class="secondary-button" type="submit" name="decision" value="review_first">Review first</button>
               <button class="danger-button" type="submit" name="decision" value="blocked">Block</button>
             </div>
+            <p class="decision-status" role="status"></p>
           </form>
         <% }) %>
       </div>
