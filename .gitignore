@@ -10,9 +10,12 @@ coverage/
 .turbo/
 .vite/
 .npm-cache/
+.pm2/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 data/*.sqlite
 data/*.sqlite-*
+logs/*.log
+logs/*.log.*

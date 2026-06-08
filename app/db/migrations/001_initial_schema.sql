@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS child_profiles (
 
 CREATE TABLE IF NOT EXISTS channels (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  source TEXT NOT NULL DEFAULT 'youtube',
+  source TEXT NOT NULL DEFAULT 'mock',
   external_id TEXT NOT NULL,
   title TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -60,12 +60,17 @@ CREATE TABLE IF NOT EXISTS channels (
 CREATE TABLE IF NOT EXISTS videos (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   channel_id INTEGER,
-  source TEXT NOT NULL DEFAULT 'youtube',
+  source TEXT NOT NULL DEFAULT 'mock',
   external_id TEXT NOT NULL,
   title TEXT NOT NULL,
   description TEXT,
   duration_seconds INTEGER,
-  category_key TEXT NOT NULL DEFAULT 'general',
+  primary_category TEXT NOT NULL DEFAULT 'General',
+  icon_key TEXT NOT NULL DEFAULT 'general',
+  labels_json TEXT NOT NULL DEFAULT '[]',
+  confidence_score REAL NOT NULL DEFAULT 0.5 CHECK (confidence_score >= 0 AND confidence_score <= 1),
+  child_explanation TEXT NOT NULL DEFAULT 'This looks like a calm learning video.',
+  parent_explanation TEXT,
   is_short INTEGER NOT NULL DEFAULT 0 CHECK (is_short IN (0, 1)),
   is_livestream INTEGER NOT NULL DEFAULT 0 CHECK (is_livestream IN (0, 1)),
   transcript_stored INTEGER NOT NULL DEFAULT 0 CHECK (transcript_stored IN (0, 1)),
@@ -79,21 +84,22 @@ CREATE TABLE IF NOT EXISTS moderation_reviews (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   household_id INTEGER NOT NULL,
   video_id INTEGER NOT NULL,
-  status TEXT NOT NULL CHECK (status IN ('pending', 'allowed', 'blocked')),
+  status TEXT NOT NULL CHECK (status IN ('pending', 'allow', 'allow_limited', 'review', 'block', 'unknown')),
   parent_facing_reason TEXT,
   reviewed_by_parent_user_id INTEGER,
   reviewed_at TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (household_id) REFERENCES households(id) ON DELETE CASCADE,
   FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE,
-  FOREIGN KEY (reviewed_by_parent_user_id) REFERENCES parent_users(id) ON DELETE SET NULL
+  FOREIGN KEY (reviewed_by_parent_user_id) REFERENCES parent_users(id) ON DELETE SET NULL,
+  UNIQUE (household_id, video_id)
 );
 
 CREATE TABLE IF NOT EXISTS household_video_decisions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   household_id INTEGER NOT NULL,
   video_id INTEGER NOT NULL,
-  decision TEXT NOT NULL CHECK (decision IN ('allow', 'block')),
+  decision TEXT NOT NULL CHECK (decision IN ('allow', 'allow_limited', 'review_required', 'block')),
   parent_facing_reason TEXT,
   decided_by_parent_user_id INTEGER,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -108,7 +114,7 @@ CREATE TABLE IF NOT EXISTS household_channel_decisions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   household_id INTEGER NOT NULL,
   channel_id INTEGER NOT NULL,
-  decision TEXT NOT NULL CHECK (decision IN ('allow', 'block')),
+  decision TEXT NOT NULL CHECK (decision IN ('approved', 'review_first', 'blocked')),
   parent_facing_reason TEXT,
   decided_by_parent_user_id INTEGER,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -124,13 +130,23 @@ CREATE TABLE IF NOT EXISTS search_events (
   household_id INTEGER NOT NULL,
   child_profile_id INTEGER,
   query TEXT NOT NULL,
+  original_query TEXT NOT NULL,
+  clarified_query TEXT,
+  query_intent TEXT,
+  clarification_options_json TEXT NOT NULL DEFAULT '[]',
+  selected_clarification TEXT,
+  shown_video_ids_json TEXT NOT NULL DEFAULT '[]',
+  clicked_video_id INTEGER,
+  not_what_i_meant INTEGER NOT NULL DEFAULT 0 CHECK (not_what_i_meant IN (0, 1)),
   result_count INTEGER NOT NULL DEFAULT 0 CHECK (result_count BETWEEN 0 AND 3),
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (household_id) REFERENCES households(id) ON DELETE CASCADE,
-  FOREIGN KEY (child_profile_id) REFERENCES child_profiles(id) ON DELETE SET NULL
+  FOREIGN KEY (child_profile_id) REFERENCES child_profiles(id) ON DELETE SET NULL,
+  FOREIGN KEY (clicked_video_id) REFERENCES videos(id) ON DELETE SET NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_parent_users_household_id ON parent_users(household_id);
 CREATE INDEX IF NOT EXISTS idx_child_profiles_household_id ON child_profiles(household_id);
 CREATE INDEX IF NOT EXISTS idx_videos_channel_id ON videos(channel_id);
+CREATE INDEX IF NOT EXISTS idx_moderation_reviews_household_id ON moderation_reviews(household_id);
 CREATE INDEX IF NOT EXISTS idx_search_events_household_id ON search_events(household_id);

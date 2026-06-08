@@ -44,3 +44,13 @@ KidView is a small, maintainable Node/Express/EJS app. Keep the codebase boring 
 - Comment non-obvious logic.
 - Validate external API/model responses with zod where practical.
 - Add setup notes to README whenever environment or run steps change.
+
+## Additional Development Workflow Specifications
+
+Before making the first changes in a new chat, inspect the repo and summarize the current structure. Then propose the smallest safe implementation plan. Wait for approval before editing more than 5 files.
+
+When large changes are called for in response to a user request, aim to implement in small commits. After each logical phase, stop and summarize what changed, how to test it, and any risks or assumptions.
+
+Following any signficant code changes involving creation of new routes, pages, components, etc., review the current working branch as a senior Node/Express developer. Focus on security, simplicity, maintainability, and whether the codebase is understandable for a technical non-developer. Identify specific improvements and explain why they matter.
+
+When reviewing the project (e.g., after large code changes or branch merges), find places where this codebase violates its own conventions. Look for duplicate CSS patterns, inconsistent route naming, unused dependencies, hard-coded project data, and anything that would make future project additions harder.

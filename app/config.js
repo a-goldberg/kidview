@@ -11,6 +11,7 @@ module.exports = {
   env: process.env.NODE_ENV || 'development',
   isProduction: process.env.NODE_ENV === 'production',
   port: Number(process.env.PORT || 3002),
+  host: process.env.HOST || '127.0.0.1',
   databasePath: fromRoot(process.env.DATABASE_PATH || './data/kidview.sqlite'),
   sessionSecret: process.env.SESSION_SECRET || 'dev-only-change-me',
   sessionCookieName: process.env.SESSION_COOKIE_NAME || 'kidview.sid',

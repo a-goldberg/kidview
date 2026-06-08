@@ -204,7 +204,8 @@ input:focus {
 }
 
 .primary-button,
-.secondary-button {
+.secondary-button,
+.danger-button {
   display: inline-flex;
   min-height: 3.25rem;
   align-items: center;
@@ -232,6 +233,12 @@ input:focus {
   border: 1px solid #cde0d7;
 }
 
+.danger-button {
+  color: #fff;
+  background: var(--error);
+  border: 1px solid var(--error);
+}
+
 .form-error {
   padding: 0.75rem 0.9rem;
   color: var(--error);
@@ -241,13 +248,14 @@ input:focus {
 }
 
 .dashboard-grid,
-.result-grid {
+.result-grid,
+.review-layout {
   display: grid;
   gap: 1rem;
 }
 
 .dashboard-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .result-grid {
@@ -290,6 +298,102 @@ input:focus {
 .channel {
   color: var(--muted);
   font-weight: 700;
+}
+
+.video-player-placeholder {
+  display: grid;
+  gap: 1rem;
+  padding: clamp(1.25rem, 5vw, 2rem);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  box-shadow: var(--shadow);
+}
+
+.large-icon {
+  min-height: 14rem;
+}
+
+.large-icon img {
+  width: 6rem;
+  height: 6rem;
+}
+
+.review-layout {
+  grid-template-columns: minmax(0, 1fr) minmax(18rem, 24rem);
+  align-items: start;
+}
+
+.review-list,
+.channel-decision-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.review-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(18rem, 24rem);
+  gap: 1rem;
+  padding: 1.25rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  box-shadow: var(--shadow);
+}
+
+.review-card h3 {
+  margin: 0;
+  font-size: 1.25rem;
+  line-height: 1.2;
+}
+
+.label-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding: 0;
+  margin: 0.75rem 0;
+  list-style: none;
+}
+
+.label-list li {
+  padding: 0.2rem 0.45rem;
+  color: var(--brand-dark);
+  background: #edf6f2;
+  border: 1px solid #cde0d7;
+  border-radius: 0.35rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.review-reason {
+  padding: 0.75rem;
+  background: #fff8ec;
+  border-left: 4px solid var(--accent);
+}
+
+.decision-form,
+.channel-form {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.decision-form label {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.channel-form {
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--line);
 }
 
 .simple-list {
@@ -343,7 +447,9 @@ input:focus {
   }
 
   .dashboard-grid,
-  .result-grid {
+  .result-grid,
+  .review-layout,
+  .review-card {
     grid-template-columns: 1fr;
   }
 

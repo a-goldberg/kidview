@@ -13,6 +13,12 @@
       <p>Start with a search term.</p>
       <a class="secondary-button" href="/child/search">Go to search</a>
     </section>
+  <% } else if (!results.length) { %>
+    <section class="panel">
+      <h2>No ready videos yet</h2>
+      <p class="muted">A parent can review more videos from the parent dashboard.</p>
+      <a class="secondary-button" href="/child/search">Search again</a>
+    </section>
   <% } else { %>
     <section class="result-grid" aria-label="Video results">
       <% results.forEach((result) => { %>
@@ -21,10 +27,11 @@
             <img src="<%= result.iconPath %>" alt="" aria-hidden="true">
           </div>
           <div class="video-card-body">
-            <p class="category"><%= result.categoryLabel %> · <%= result.duration %></p>
+            <p class="category"><%= result.primaryCategory %> · <%= Math.round(result.durationSeconds / 60) %> min</p>
             <h2><%= result.title %></h2>
-            <p><%= result.summary %></p>
-            <p class="channel"><%= result.channel %></p>
+            <p><%= result.childExplanation %></p>
+            <p class="channel"><%= result.channelTitle %></p>
+            <a class="secondary-button" href="<%= result.watchUrl %>">Open</a>
           </div>
         </article>
       <% }) %>

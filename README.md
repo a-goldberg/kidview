@@ -2,7 +2,7 @@
 
 KidView is a small Node.js, Express, and EJS web app for a household-controlled child video discovery gateway.
 
-This first milestone is intentionally boring: it creates a local scaffold, SQLite schema, seed data, parent login, a parent dashboard placeholder, and a child search flow with capped mock results.
+This early milestone is intentionally boring: it creates a local scaffold, SQLite schema, seed data, parent login, a child-safe mock search pipeline, and parent review screens.
 
 ## Requirements
 
@@ -45,6 +45,7 @@ This first milestone is intentionally boring: it creates a local scaffold, SQLit
 
    - Child search: `http://localhost:3002/child/search`
    - Parent login: `http://localhost:3002/auth/login`
+   - Parent reviews: `http://localhost:3002/parent/reviews`
 
 Default seeded parent credentials come from `.env.example`:
 
@@ -79,15 +80,62 @@ assets/
 - Parent users belong to a household.
 - Child profiles are not login accounts.
 - Child search results are capped at three.
-- Child search cards use category icons, not native YouTube thumbnails.
+- Child search cards use standardized category icons, not native YouTube thumbnails.
 - The schema has explicit flags for Shorts and livestreams.
 - Blocked-video reasons are stored only for parent-facing decisions and reviews.
 - Transcript text is not stored by default.
+- Search uses mock database candidates only. There is no YouTube, OpenAI, transcript, or external service integration.
+- Blocked, pending-review, unknown, Short, and livestream candidates are not shown to children.
+
+## Testing The Mock Review Flow
+
+The seed data creates more mock candidates than KidView shows to children. Use `nature` as the demo search term:
+
+1. Reset and reseed the local database after schema changes:
+
+   ```sh
+   npm run db:reset
+   ```
+
+2. Start the app:
+
+   ```sh
+   npm run dev
+   ```
+
+3. Visit `http://localhost:3002/child/search` and search for `nature`.
+
+   You should see at most three child-facing cards. They use local category icons and link to KidView placeholder video pages.
+
+4. Log in at `http://localhost:3002/auth/login`.
+
+5. Visit `http://localhost:3002/parent/reviews`.
+
+The review page demonstrates `allow`, `allow_limited`, `review_required`, `block`, `review`, `unknown`, Short, livestream, and channel decision cases. Parent notes remain parent-facing.
 
 ## Useful Scripts
 
 - `npm run dev` starts the app with Node's watch mode.
 - `npm start` starts the app normally.
+- `npm run pm2:start` starts KidView through PM2 using `ecosystem.config.js`.
+- `npm run pm2:restart` restarts the PM2-managed KidView process.
+- `npm run pm2:stop` stops the PM2-managed KidView process.
+- `npm run pm2:status` shows PM2 status for KidView.
+- `npm run pm2:logs` tails KidView PM2 logs.
 - `npm run db:migrate` applies plain SQL migrations.
 - `npm run db:seed` creates one demo household, parent, and child.
 - `npm run db:reset` removes the local SQLite database, reruns migrations, and reseeds.
+
+## PM2
+
+KidView can be managed with PM2 using the checked-in `ecosystem.config.js` file:
+
+```sh
+pm2 --version
+npm run pm2:start
+npm run pm2:restart
+npm run pm2:status
+npm run pm2:logs
+```
+
+The PM2 app is named `kidview`, binds to `127.0.0.1:3002`, and writes local logs under `logs/`. The npm PM2 scripts set `PM2_HOME=.pm2` so PM2 runtime files stay inside the project workspace. PM2 should be installed globally on the machine, or added as a dev dependency later with `npm install --save-dev pm2` when npm network access is available.

@@ -93,6 +93,6 @@ app.use((err, req, res, next) => {
   });
 });
 
-app.listen(config.port, () => {
-  console.log(`KidView running at http://localhost:${config.port}`);
+app.listen(config.port, config.host, () => {
+  console.log(`KidView running at http://${config.host}:${config.port}`);
 });

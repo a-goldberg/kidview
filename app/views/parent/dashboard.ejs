@@ -5,7 +5,7 @@
   <section class="page-heading">
     <p class="eyebrow">Parent dashboard</p>
     <h1><%= dashboard.household.name %></h1>
-    <p class="muted">A placeholder for household policy, child profiles, and review queues.</p>
+    <p class="muted">Household policy, child profiles, and review queues.</p>
   </section>
 
   <section class="dashboard-grid" aria-label="Dashboard summary">
@@ -44,6 +44,12 @@
     <article class="panel">
       <h2>Policy defaults</h2>
       <p class="muted">Results are capped at three. Shorts and livestreams are blocked by default.</p>
+    </article>
+
+    <article class="panel">
+      <h2>Review queue</h2>
+      <p class="muted"><%= dashboard.pendingReviewCount %> video(s) need a parent decision.</p>
+      <a class="secondary-button" href="/parent/reviews">Review videos</a>
     </article>
   </section>
 </main>

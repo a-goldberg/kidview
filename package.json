@@ -1,12 +1,17 @@
 {
   "name": "kidview",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Household-controlled child video discovery gateway.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
+    "pm2:start": "PM2_HOME=.pm2 pm2 startOrRestart ecosystem.config.js --only kidview",
+    "pm2:restart": "PM2_HOME=.pm2 pm2 startOrRestart ecosystem.config.js --only kidview --update-env",
+    "pm2:stop": "PM2_HOME=.pm2 pm2 stop kidview",
+    "pm2:logs": "PM2_HOME=.pm2 pm2 logs kidview",
+    "pm2:status": "PM2_HOME=.pm2 pm2 status kidview",
     "db:migrate": "node scripts/migrate.js",
     "db:seed": "node scripts/seed.js",
     "db:reset": "rm -f data/kidview.sqlite data/kidview.sqlite-* && npm run db:migrate && npm run db:seed"
