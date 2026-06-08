@@ -4,12 +4,20 @@
 <main class="child-shell">
   <section class="child-search-panel">
     <p class="eyebrow">Kid search</p>
-    <h1>What do you want to learn about?</h1>
+    <h1><%= wasNotWhatIMeant ? 'Try a different search' : 'What do you want to learn about?' %></h1>
+    <% if (wasNotWhatIMeant) { %>
+      <p class="muted">No problem. Try another word or pick one of these ideas.</p>
+    <% } %>
     <form class="search-form" action="/child/results" method="get">
       <label class="visually-hidden" for="q">Search videos</label>
-      <input id="q" name="q" type="search" autocomplete="off" placeholder="Try birds, shadows, or paper crafts" required>
+      <input id="q" name="q" type="search" autocomplete="off" placeholder="Try science, otters, fractions, or animation" value="<%= query %>" required>
       <button class="primary-button" type="submit">Search</button>
     </form>
+    <div class="suggestion-list" aria-label="Search ideas">
+      <% suggestions.forEach((suggestion) => { %>
+        <a href="/child/results?q=<%= encodeURIComponent(suggestion) %>"><%= suggestion %></a>
+      <% }) %>
+    </div>
     <% if (childProfile) { %>
       <p class="muted">Searching for <%= childProfile.displayName %>.</p>
     <% } %>

@@ -16,8 +16,13 @@
   <% } else if (!results.length) { %>
     <section class="panel">
       <h2>No ready videos yet</h2>
-      <p class="muted">A parent can review more videos from the parent dashboard.</p>
-      <a class="secondary-button" href="/child/search">Search again</a>
+      <p class="muted">Try another search idea, or ask a parent to review more videos.</p>
+      <div class="suggestion-list" aria-label="Search ideas">
+        <% suggestions.forEach((suggestion) => { %>
+          <a href="/child/results?q=<%= encodeURIComponent(suggestion) %>"><%= suggestion %></a>
+        <% }) %>
+      </div>
+      <a class="secondary-button" href="/child/search?q=<%= encodeURIComponent(query) %>">Search again</a>
     </section>
   <% } else { %>
     <section class="result-grid" aria-label="Video results">
@@ -37,9 +42,15 @@
       <% }) %>
     </section>
 
-    <p class="center-action">
-      <a class="secondary-button" href="/child/search">Search again</a>
-    </p>
+    <div class="center-action action-row">
+      <% if (searchEventId) { %>
+        <form action="/child/search-events/<%= searchEventId %>/not-what-i-meant" method="post">
+          <input type="hidden" name="query" value="<%= query %>">
+          <button class="secondary-button" type="submit">Not what I meant</button>
+        </form>
+      <% } %>
+      <a class="secondary-button" href="/child/search?q=<%= encodeURIComponent(query) %>">New search</a>
+    </div>
   <% } %>
 </main>
 

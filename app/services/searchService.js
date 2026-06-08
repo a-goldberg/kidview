@@ -21,7 +21,7 @@ function search({ query, householdId, childProfileId }) {
   });
 
   // Search events intentionally store only query metadata, not transcript text.
-  db.prepare(
+  const searchEvent = db.prepare(
     `INSERT INTO search_events (
       household_id,
       child_profile_id,
@@ -50,11 +50,34 @@ function search({ query, householdId, childProfileId }) {
 
   return {
     query: safeQuery,
+    searchEventId: searchEvent.lastInsertRowid,
     candidatesConsidered: candidates.length,
     results
   };
 }
 
+function markNotWhatIMeant({ searchEventId, householdId }) {
+  return db
+    .prepare(
+      `UPDATE search_events
+       SET not_what_i_meant = 1
+       WHERE id = ? AND household_id = ?`
+    )
+    .run(searchEventId, householdId).changes;
+}
+
+function recordClickedVideo({ searchEventId, householdId, videoId }) {
+  return db
+    .prepare(
+      `UPDATE search_events
+       SET clicked_video_id = ?
+       WHERE id = ? AND household_id = ?`
+    )
+    .run(videoId, searchEventId, householdId).changes;
+}
+
 module.exports = {
+  markNotWhatIMeant,
+  recordClickedVideo,
   search
 };

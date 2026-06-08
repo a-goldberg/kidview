@@ -10,7 +10,12 @@
     <h1><%= video.title %></h1>
     <p><%= video.childExplanation %></p>
     <p class="channel"><%= video.channelTitle %></p>
-    <a class="secondary-button" href="/child/search">Back to search</a>
+    <div class="action-row">
+      <% if (resultsUrl) { %>
+        <a class="primary-button" href="<%= resultsUrl %>">More results</a>
+      <% } %>
+      <a class="secondary-button" href="/child/search">New search</a>
+    </div>
   </section>
 </main>
 

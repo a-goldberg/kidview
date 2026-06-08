@@ -5,7 +5,12 @@
   <section class="panel">
     <h1>Video unavailable</h1>
     <p class="muted">This video is not ready for child viewing.</p>
-    <a class="secondary-button" href="/child/search">Back to search</a>
+    <div class="action-row">
+      <% if (resultsUrl) { %>
+        <a class="primary-button" href="<%= resultsUrl %>">More results</a>
+      <% } %>
+      <a class="secondary-button" href="/child/search">New search</a>
+    </div>
   </section>
 </main>
 
