@@ -33,7 +33,8 @@ img {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -111,6 +112,24 @@ input {
   margin-bottom: 1.5rem;
 }
 
+.parent-page {
+  width: min(1180px, calc(100% - 1.5rem));
+  padding: 1.5rem 0;
+}
+
+.compact-heading {
+  margin-bottom: 1rem;
+}
+
+.compact-heading h1 {
+  max-width: none;
+  font-size: clamp(1.6rem, 3vw, 2.4rem);
+}
+
+.compact-heading p {
+  margin: 0.35rem 0 0;
+}
+
 .child-shell {
   display: grid;
   min-height: calc(100vh - 145px);
@@ -132,6 +151,10 @@ input {
 
 .panel {
   padding: 1.25rem;
+}
+
+.parent-page .panel {
+  padding: 0.85rem;
 }
 
 .eyebrow,
@@ -157,6 +180,10 @@ h1 {
 
 h2 {
   font-size: 1.15rem;
+}
+
+.parent-page h2 {
+  font-size: 1rem;
 }
 
 .panel h1,
@@ -193,6 +220,24 @@ input {
   border-radius: 0.5rem;
 }
 
+.parent-page input,
+.parent-page select {
+  min-height: 2.35rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: 0.35rem;
+  font-size: 0.92rem;
+}
+
+select {
+  width: 100%;
+  min-height: 3.25rem;
+  padding: 0.85rem 1rem;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid #cbd8d2;
+  border-radius: 0.5rem;
+}
+
 input:focus {
   outline: 3px solid rgba(44, 110, 99, 0.2);
   border-color: var(--brand);
@@ -215,6 +260,15 @@ input:focus {
   font-weight: 800;
   text-decoration: none;
   cursor: pointer;
+}
+
+.parent-page .primary-button,
+.parent-page .secondary-button,
+.parent-page .danger-button {
+  min-height: 2.25rem;
+  padding: 0.4rem 0.65rem;
+  border-radius: 0.35rem;
+  font-size: 0.88rem;
 }
 
 .primary-button {
@@ -333,8 +387,8 @@ input:focus {
 .review-card {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(18rem, 24rem);
-  gap: 1rem;
-  padding: 1.25rem;
+  gap: 0.8rem;
+  padding: 0.8rem;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 0.5rem;
@@ -343,7 +397,7 @@ input:focus {
 
 .review-card h3 {
   margin: 0;
-  font-size: 1.25rem;
+  font-size: 1rem;
   line-height: 1.2;
 }
 
@@ -352,22 +406,22 @@ input:focus {
   flex-wrap: wrap;
   gap: 0.4rem;
   padding: 0;
-  margin: 0.75rem 0;
+  margin: 0.45rem 0;
   list-style: none;
 }
 
 .label-list li {
-  padding: 0.2rem 0.45rem;
+  padding: 0.12rem 0.35rem;
   color: var(--brand-dark);
   background: #edf6f2;
   border: 1px solid #cde0d7;
   border-radius: 0.35rem;
-  font-size: 0.85rem;
+  font-size: 0.75rem;
   font-weight: 700;
 }
 
 .review-reason {
-  padding: 0.75rem;
+  padding: 0.55rem;
   background: #fff8ec;
   border-left: 4px solid var(--accent);
 }
@@ -375,7 +429,7 @@ input:focus {
 .decision-form,
 .channel-form {
   display: grid;
-  gap: 0.75rem;
+  gap: 0.5rem;
 }
 
 .decision-form label {
@@ -388,12 +442,129 @@ input:focus {
 .button-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: 0.35rem;
 }
 
 .channel-form {
   padding-bottom: 1rem;
   border-bottom: 1px solid var(--line);
+}
+
+.decision-status {
+  min-height: 1.2rem;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.decision-status[data-state='saved'] {
+  color: var(--brand-dark);
+}
+
+.decision-status[data-state='error'] {
+  color: var(--error);
+}
+
+.is-resolved {
+  opacity: 0.45;
+  transform: scale(0.995);
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.filter-bar {
+  display: grid;
+  grid-template-columns: minmax(16rem, 1fr) minmax(12rem, 16rem) auto;
+  gap: 0.75rem;
+  align-items: end;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+}
+
+.review-filter-bar {
+  grid-template-columns: minmax(16rem, 1fr) minmax(12rem, 18rem) auto;
+}
+
+.filter-bar label,
+.compact-decision-form label {
+  display: grid;
+  gap: 0.25rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.decision-history,
+.decision-section {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.history-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(20rem, 28rem);
+  gap: 1rem;
+  padding: 1rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+}
+
+.history-main h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.compact-note {
+  margin: 0.5rem 0;
+}
+
+.compact-labels {
+  margin: 0.5rem 0 0;
+}
+
+.compact-decision-form {
+  align-content: start;
+}
+
+.small-button {
+  min-height: 2.5rem;
+  padding: 0.45rem 0.75rem;
+  font-size: 0.9rem;
+}
+
+.count-pill {
+  display: inline-flex;
+  min-width: 1.6rem;
+  min-height: 1.4rem;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.35rem;
+  color: var(--brand-dark);
+  background: #edf6f2;
+  border: 1px solid #cde0d7;
+  border-radius: 999px;
+  font-size: 0.78rem;
+}
+
+.info-disclosure {
+  margin-top: 0.5rem;
+  color: var(--muted);
+}
+
+.info-disclosure summary {
+  width: max-content;
+  color: var(--brand-dark);
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 800;
+}
+
+.info-disclosure p {
+  margin: 0.5rem 0 0;
 }
 
 .simple-list {
@@ -449,7 +620,9 @@ input:focus {
   .dashboard-grid,
   .result-grid,
   .review-layout,
-  .review-card {
+  .review-card,
+  .filter-bar,
+  .history-row {
     grid-template-columns: 1fr;
   }
 
