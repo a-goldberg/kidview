@@ -17,5 +17,11 @@ module.exports = {
   sessionCookieName: process.env.SESSION_COOKIE_NAME || 'kidview.sid',
   seedParentEmail: process.env.SEED_PARENT_EMAIL || 'parent@example.com',
   seedParentPassword: process.env.SEED_PARENT_PASSWORD || 'password123',
+  videoSource: (process.env.VIDEO_SOURCE || 'mock').toLowerCase(),
+  youtubeApiKey: process.env.YOUTUBE_API_KEY || '',
+  youtubeMaxSearchResults: Number(process.env.YOUTUBE_MAX_SEARCH_RESULTS || 10),
+  youtubeSafeSearch: process.env.YOUTUBE_SAFE_SEARCH || 'moderate',
+  youtubeRegionCode: process.env.YOUTUBE_REGION_CODE || 'US',
+  youtubeRelevanceLanguage: process.env.YOUTUBE_RELEVANCE_LANGUAGE || 'en',
   rootDir
 };

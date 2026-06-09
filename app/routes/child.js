@@ -22,31 +22,36 @@ router.get('/search', (req, res) => {
   });
 });
 
-router.get('/results', (req, res) => {
+router.get('/results', async (req, res, next) => {
   const childProfile = getFirstChildProfile();
   const query = String(req.query.q || '').trim();
-  const searchResponse = query
-    ? search({
-        query,
-        householdId: childProfile && childProfile.householdId,
-        childProfileId: childProfile && childProfile.id
-      })
-    : { query, searchEventId: null, candidatesConsidered: 0, results: [] };
 
-  res.render('child/results', {
-    title: 'KidView Results',
-    childProfile,
-    query,
-    searchEventId: searchResponse.searchEventId,
-    candidatesConsidered: searchResponse.candidatesConsidered,
-    suggestions: SEARCH_SUGGESTIONS,
-    results: searchResponse.results.map((result) => ({
-      ...result,
-      watchUrl: `${result.watchUrl}?q=${encodeURIComponent(query)}&searchEventId=${encodeURIComponent(
-        searchResponse.searchEventId || ''
-      )}`
-    }))
-  });
+  try {
+    const searchResponse = query
+      ? await search({
+          query,
+          householdId: childProfile && childProfile.householdId,
+          childProfileId: childProfile && childProfile.id
+        })
+      : { query, searchEventId: null, candidatesConsidered: 0, results: [] };
+
+    res.render('child/results', {
+      title: 'KidView Results',
+      childProfile,
+      query,
+      searchEventId: searchResponse.searchEventId,
+      candidatesConsidered: searchResponse.candidatesConsidered,
+      suggestions: SEARCH_SUGGESTIONS,
+      results: searchResponse.results.map((result) => ({
+        ...result,
+        watchUrl: `${result.watchUrl}?q=${encodeURIComponent(query)}&searchEventId=${encodeURIComponent(
+          searchResponse.searchEventId || ''
+        )}`
+      }))
+    });
+  } catch (error) {
+    next(error);
+  }
 });
 
 router.get('/videos/:videoId', (req, res) => {

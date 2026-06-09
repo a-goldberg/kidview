@@ -2,7 +2,7 @@
 
 KidView is a small Node.js, Express, and EJS web app for a household-controlled child video discovery gateway.
 
-This early milestone is intentionally boring: it creates a local scaffold, SQLite schema, seed data, parent login, a child-safe mock search pipeline, and parent review screens.
+This early milestone is intentionally boring: it creates a local scaffold, SQLite schema, seed data, parent login, a child-safe search pipeline, and parent review screens.
 
 ## Requirements
 
@@ -84,12 +84,13 @@ assets/
 - The schema has explicit flags for Shorts and livestreams.
 - Blocked-video reasons are stored only for parent-facing decisions and reviews.
 - Transcript text is not stored by default.
-- Search uses mock database candidates only. There is no YouTube, OpenAI, transcript, or external service integration.
+- Search uses either mock database candidates or a YouTube Data API source adapter behind the same internal service boundary.
+- YouTube responses are normalized into KidView candidate records. Raw YouTube API responses and transcript text are not stored by default.
 - Blocked, pending-review, unknown, Short, and livestream candidates are not shown to children.
 
 ## Testing The Fixture Review Flow
 
-The seed data loads YouTube-shaped fixture candidates from `app/services/fixtures/youtubeSampleCandidates.js`. These are local test records only; the app still does not call the YouTube API.
+The seed data loads YouTube-shaped fixture candidates from `app/services/fixtures/youtubeSampleCandidates.js`. These are local test records only; while `VIDEO_SOURCE=mock`, the app does not call the YouTube API.
 
 1. Reset and reseed the local database after schema changes:
 
@@ -117,6 +118,55 @@ The seed data loads YouTube-shaped fixture candidates from `app/services/fixture
 5. Visit `http://localhost:3002/parent/reviews`.
 
 The review page demonstrates `allow`, `allow_limited`, `review_required`, `block`, `review`, `unknown`, Short, livestream, and channel decision cases. Parent notes remain parent-facing.
+
+## YouTube Data API Source
+
+By default, KidView uses local mock candidates:
+
+```sh
+VIDEO_SOURCE=mock
+```
+
+To use the YouTube Data API in production or local testing, set these server-side environment variables and restart the app:
+
+```sh
+VIDEO_SOURCE=youtube
+YOUTUBE_API_KEY=your-server-side-api-key
+YOUTUBE_MAX_SEARCH_RESULTS=10
+YOUTUBE_SAFE_SEARCH=moderate
+YOUTUBE_REGION_CODE=US
+YOUTUBE_RELEVANCE_LANGUAGE=en
+```
+
+The API key must stay on the server. It is read by `app/services/youtubeSourceService.js` and is never sent to EJS views, browser JavaScript, or child-facing pages.
+
+Because KidView calls YouTube from Node, the API key should not be restricted by browser HTTP referrers. For production, prefer a server-side restriction such as allowed server IP addresses. For local development, either use an unrestricted development key or add a restriction that works for your local server environment. A key restricted to website referrers can fail with `Requests from referer <empty> are blocked.`
+
+The YouTube adapter calls `search.list`, fetches matching video details with `videos.list`, then maps each item into the same internal candidate shape used by the mock source. KidView still applies the same policy and moderation rules after that:
+
+- no Shorts
+- no livestreams
+- no non-embeddable videos
+- no blocked channels
+- at most three child-visible results
+- blocked, review, and unknown items stay out of the child UI
+
+Fresh YouTube candidates will usually need parent review or household decisions before they appear to children. In development mode, the server logs how many YouTube candidates were returned and how many survived policy/moderation.
+
+Useful searches to try with the YouTube source:
+
+- `basic fractions for kids`
+- `sea otters science`
+- `how clouds make rain`
+- `beginner animation for kids`
+
+Switch back to fixture mode at any time with:
+
+```sh
+VIDEO_SOURCE=mock
+```
+
+Then restart the app.
 
 ## Planned Features
 
