@@ -1,4 +1,5 @@
 const db = require('../db/database');
+const { remoderateChannelVideos } = require('./moderationService');
 
 const VIDEO_DECISIONS = new Set(['allow', 'allow_limited', 'review_required', 'block']);
 const CHANNEL_DECISIONS = new Set(['approved', 'review_first', 'blocked']);
@@ -72,6 +73,8 @@ function upsertChannelDecision({ householdId, channelId, parentUserId, decision,
       decided_by_parent_user_id = excluded.decided_by_parent_user_id,
       updated_at = CURRENT_TIMESTAMP`
   ).run(householdId, channelId, normalizedDecision, parentReason, parentUserId);
+
+  return remoderateChannelVideos({ householdId, channelId });
 }
 
 function bulkUpsertVideoDecisions({ householdId, parentUserId, videoIds, decision, reason }) {

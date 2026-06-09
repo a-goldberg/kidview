@@ -152,7 +152,7 @@ router.post('/decisions/videos/:videoId', requireParent, (req, res) => {
 });
 
 router.post('/reviews/channels/:channelId/decision', requireParent, (req, res) => {
-  upsertChannelDecision({
+  const remoderatedCount = upsertChannelDecision({
     householdId: req.session.parentUser.householdId,
     parentUserId: req.session.parentUser.id,
     channelId: Number(req.params.channelId),
@@ -163,12 +163,12 @@ router.post('/reviews/channels/:channelId/decision', requireParent, (req, res) =
   sendDecisionResponse(req, res, '/parent/reviews', {
     decision: req.body.decision,
     removeCard: false,
-    message: 'Channel decision saved.'
+    message: `Channel decision saved. Re-scored ${remoderatedCount} known video${remoderatedCount === 1 ? '' : 's'}.`
   });
 });
 
 router.post('/decisions/channels/:channelId', requireParent, (req, res) => {
-  upsertChannelDecision({
+  const remoderatedCount = upsertChannelDecision({
     householdId: req.session.parentUser.householdId,
     parentUserId: req.session.parentUser.id,
     channelId: Number(req.params.channelId),
@@ -182,7 +182,7 @@ router.post('/decisions/channels/:channelId', requireParent, (req, res) => {
     `/parent/decisions?kind=${encodeURIComponent(req.body.kind || 'all')}&search=${encodeURIComponent(req.body.search || '')}&sort=${encodeURIComponent(req.body.sort || 'updated_newest')}`,
     {
       decision: req.body.decision,
-      message: 'Channel decision updated.'
+      message: `Channel decision updated. Re-scored ${remoderatedCount} known video${remoderatedCount === 1 ? '' : 's'}.`
     }
   );
 });
