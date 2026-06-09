@@ -42,26 +42,26 @@ function getParentDashboard(householdId) {
   const pendingReviewCount = db
     .prepare(
       `SELECT COUNT(*) AS count
-       FROM videos
-       JOIN channels ON channels.id = videos.channel_id
+       FROM household_review_items
+       JOIN videos ON videos.id = household_review_items.video_id
        LEFT JOIN moderation_reviews
-        ON moderation_reviews.video_id = videos.id
-        AND moderation_reviews.household_id = ?
+        ON moderation_reviews.household_id = household_review_items.household_id
+        AND moderation_reviews.video_id = household_review_items.video_id
        LEFT JOIN household_video_decisions
-        ON household_video_decisions.video_id = videos.id
-        AND household_video_decisions.household_id = ?
+        ON household_video_decisions.household_id = household_review_items.household_id
+        AND household_video_decisions.video_id = household_review_items.video_id
        LEFT JOIN household_channel_decisions
-        ON household_channel_decisions.channel_id = videos.channel_id
-        AND household_channel_decisions.household_id = ?
-       WHERE videos.is_short = 0
-        AND videos.is_livestream = 0
+        ON household_channel_decisions.household_id = household_review_items.household_id
+        AND household_channel_decisions.channel_id = videos.channel_id
+       WHERE household_review_items.household_id = ?
+        AND household_review_items.status = 'pending'
         AND household_video_decisions.id IS NULL
-        AND (
-          moderation_reviews.status IN ('pending', 'review', 'unknown', 'allow_limited', 'block')
-          OR (moderation_reviews.id IS NULL AND household_channel_decisions.id IS NULL)
-        )`
+        AND (household_channel_decisions.decision IS NULL OR household_channel_decisions.decision != 'blocked')
+        AND videos.is_short = 0
+        AND videos.live_status NOT IN ('live', 'upcoming')
+        AND COALESCE(moderation_reviews.decision, moderation_reviews.status, household_review_items.reason_code) IN ('allow_limited', 'review', 'unknown')`
     )
-    .get(householdId, householdId, householdId).count;
+    .get(householdId).count;
 
   return {
     household,
@@ -76,12 +76,11 @@ function getReviewQueue(householdId, filters = {}) {
 }
 
 function reviewStatusFor(video) {
-  if (video.is_short) return 'short';
-  if (video.is_livestream) return 'livestream';
-  if (video.channel_decision === 'blocked') return 'channel_blocked';
-  if (video.channel_decision === 'review_first') return 'channel_review_first';
-  if (video.review_status) return video.review_status;
-  return 'undecided';
+  if (['allow_limited', 'review', 'unknown'].includes(video.review_status)) {
+    return video.review_status;
+  }
+
+  return video.review_item_reason_code || 'review';
 }
 
 function getReviewQueueWithFilters(householdId, filters = {}) {
@@ -104,10 +103,14 @@ function getReviewQueueWithFilters(householdId, filters = {}) {
         videos.confidence_score,
         videos.view_count,
         videos.published_at,
-        videos.created_at,
+        videos.created_at AS video_created_at,
+        household_review_items.created_at,
         videos.parent_explanation,
         videos.is_short,
         videos.is_livestream,
+        videos.live_status,
+        household_review_items.id AS review_item_id,
+        household_review_items.reason_code AS review_item_reason_code,
         channels.id AS channel_id,
         channels.title AS channel_title,
         moderation_reviews.status AS review_status,
@@ -122,6 +125,10 @@ function getReviewQueueWithFilters(householdId, filters = {}) {
         household_channel_decisions.decision AS channel_decision,
         household_channel_decisions.parent_facing_reason AS channel_decision_reason
        FROM videos
+       JOIN household_review_items
+        ON household_review_items.video_id = videos.id
+        AND household_review_items.household_id = ?
+        AND household_review_items.status = 'pending'
        JOIN channels ON channels.id = videos.channel_id
        LEFT JOIN moderation_reviews
         ON moderation_reviews.video_id = videos.id
@@ -133,13 +140,17 @@ function getReviewQueueWithFilters(householdId, filters = {}) {
         ON household_channel_decisions.channel_id = videos.channel_id
         AND household_channel_decisions.household_id = ?
        WHERE household_video_decisions.id IS NULL
-        AND (
-          moderation_reviews.id IS NULL
-          OR moderation_reviews.status != 'allow'
-        )
+        AND (household_channel_decisions.decision IS NULL OR household_channel_decisions.decision != 'blocked')
+        AND videos.is_short = 0
+        AND videos.live_status NOT IN ('live', 'upcoming')
+        AND COALESCE(moderation_reviews.decision, moderation_reviews.status, household_review_items.reason_code) IN ('allow_limited', 'review', 'unknown')
        ORDER BY
         videos.is_short ASC,
-        videos.is_livestream ASC,
+        CASE videos.live_status
+          WHEN 'none' THEN 0
+          WHEN 'completed_live' THEN 1
+          ELSE 2
+        END ASC,
         CASE moderation_reviews.status
           WHEN 'pending' THEN 0
           WHEN 'review' THEN 1
@@ -151,7 +162,7 @@ function getReviewQueueWithFilters(householdId, filters = {}) {
         videos.confidence_score DESC,
         videos.id ASC`
     )
-    .all(householdId, householdId, householdId)
+    .all(householdId, householdId, householdId, householdId)
     .map((video) => ({
       ...video,
       labels: parseLabels(video.labels_json),
@@ -196,15 +207,34 @@ function getReviewQueueWithFilters(householdId, filters = {}) {
       `SELECT
         channels.id,
         channels.title,
+        channels.external_id,
+        COUNT(household_review_items.id) AS pending_video_count,
         household_channel_decisions.decision,
         household_channel_decisions.parent_facing_reason
        FROM channels
+       JOIN videos ON videos.channel_id = channels.id
+       JOIN household_review_items
+        ON household_review_items.video_id = videos.id
+        AND household_review_items.household_id = ?
+        AND household_review_items.status = 'pending'
        LEFT JOIN household_channel_decisions
         ON household_channel_decisions.channel_id = channels.id
         AND household_channel_decisions.household_id = ?
+       LEFT JOIN household_video_decisions
+        ON household_video_decisions.video_id = videos.id
+        AND household_video_decisions.household_id = ?
+       LEFT JOIN moderation_reviews
+        ON moderation_reviews.video_id = videos.id
+        AND moderation_reviews.household_id = ?
+       WHERE household_video_decisions.id IS NULL
+        AND (household_channel_decisions.decision IS NULL OR household_channel_decisions.decision != 'blocked')
+        AND videos.is_short = 0
+        AND videos.live_status NOT IN ('live', 'upcoming')
+        AND COALESCE(moderation_reviews.decision, moderation_reviews.status, household_review_items.reason_code) IN ('allow_limited', 'review', 'unknown')
+       GROUP BY channels.id
        ORDER BY channels.title`
     )
-    .all(householdId);
+    .all(householdId, householdId, householdId, householdId);
 
   if (search) {
     channels = channels.filter((channel) => {

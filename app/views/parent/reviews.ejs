@@ -20,12 +20,6 @@
         <option value="review" <%= reviewQueue.filters.status === 'review' ? 'selected' : '' %>>Review</option>
         <option value="unknown" <%= reviewQueue.filters.status === 'unknown' ? 'selected' : '' %>>Unknown</option>
         <option value="allow_limited" <%= reviewQueue.filters.status === 'allow_limited' ? 'selected' : '' %>>Allow limited</option>
-        <option value="block" <%= reviewQueue.filters.status === 'block' ? 'selected' : '' %>>Blocked by rules</option>
-        <option value="undecided" <%= reviewQueue.filters.status === 'undecided' ? 'selected' : '' %>>Undecided</option>
-        <option value="short" <%= reviewQueue.filters.status === 'short' ? 'selected' : '' %>>Shorts</option>
-        <option value="livestream" <%= reviewQueue.filters.status === 'livestream' ? 'selected' : '' %>>Livestreams</option>
-        <option value="channel_review_first" <%= reviewQueue.filters.status === 'channel_review_first' ? 'selected' : '' %>>Channel review first</option>
-        <option value="channel_blocked" <%= reviewQueue.filters.status === 'channel_blocked' ? 'selected' : '' %>>Channel blocked</option>
       </select>
     </label>
     <label>
@@ -53,7 +47,7 @@
     <span><strong><%= reviewQueue.videos.length %></strong> visible videos</span>
     <button class="primary-button small-button" type="submit" name="action" value="approve_all">Approve all</button>
     <button class="danger-button small-button" type="submit" name="action" value="block_all">Block all</button>
-    <button class="secondary-button small-button" type="submit" name="action" value="delete_all" data-confirm="Delete all visible review videos that do not have parent decisions?">Delete all</button>
+    <button class="secondary-button small-button" type="submit" name="action" value="delete_all" data-confirm="This removes pending items from your review queue. It does not delete videos, channels, search history, or parent decisions. If the child searches for the same video again, it may return to the queue.">Clear queue</button>
   </form>
 
   <section class="review-layout">
@@ -76,7 +70,9 @@
                 <li><%= label %></li>
               <% }) %>
               <% if (video.is_short) { %><li>Short</li><% } %>
-              <% if (video.is_livestream) { %><li>Livestream</li><% } %>
+              <% if (video.live_status === 'live') { %><li>Live now</li><% } %>
+              <% if (video.live_status === 'upcoming') { %><li>Upcoming live</li><% } %>
+              <% if (video.live_status === 'completed_live') { %><li>Completed live</li><% } %>
             </ul>
             <% if (video.channel_decision) { %>
               <p class="muted">Channel decision: <strong><%= video.channel_decision %></strong></p>
@@ -129,12 +125,13 @@
         <input type="hidden" name="status" value="<%= reviewQueue.filters.status %>">
         <input type="hidden" name="sort" value="<%= reviewQueue.filters.sort %>">
         <span><strong><%= unreviewedChannelCount %></strong> unreviewed</span>
-        <button class="secondary-button small-button" type="submit" name="action" value="delete_channels" data-confirm="Delete all visible unreviewed channels and their undecided review videos?" <%= unreviewedChannelCount ? '' : 'disabled' %>>Delete unreviewed channels</button>
+        <button class="secondary-button small-button" type="submit" name="action" value="delete_channels" data-confirm="This clears pending review videos for visible unreviewed channels. It does not delete videos, channels, search history, or parent decisions. If the child searches again, items may return to the queue." <%= unreviewedChannelCount ? '' : 'disabled' %>>Clear unreviewed channels</button>
       </form>
       <div class="channel-decision-list">
         <% reviewQueue.channels.forEach((channel) => { %>
           <form class="channel-form" action="/parent/reviews/channels/<%= channel.id %>/decision" method="post" data-async-decision>
             <strong><%= channel.title %></strong>
+            <span class="muted"><%= channel.pending_video_count %> pending video<%= channel.pending_video_count === 1 ? '' : 's' %></span>
             <span class="muted">Current: <strong data-decision-current><%= channel.decision || 'none' %></strong></span>
             <input name="reason" placeholder="Parent note" value="<%= channel.parent_facing_reason || '' %>">
             <div class="button-row">

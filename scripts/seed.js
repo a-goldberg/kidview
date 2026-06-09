@@ -89,9 +89,12 @@ function classifyCandidate(candidate) {
   const haystack = `${candidate.title} ${candidate.description} ${candidate.channelTitle}`;
   const matchedRule = CATEGORY_RULES.find((rule) => rule.pattern.test(haystack));
   const labels = [];
+  const liveStatus = candidate.liveStatus || (candidate.isLivestream ? 'completed_live' : 'none');
 
   if (candidate.isShort) labels.push('short');
-  if (candidate.isLivestream) labels.push('livestream');
+  if (liveStatus === 'live') labels.push('live');
+  if (liveStatus === 'upcoming') labels.push('upcoming-live');
+  if (liveStatus === 'completed_live') labels.push('completed-live');
   if (!candidate.embeddable) labels.push('not-embeddable');
   if (/toy|slime|surprise|mystery|clickbait|won't believe/i.test(haystack)) labels.push('high-stimulation');
   if (/math|fraction|science|nature|history|animation/i.test(haystack)) labels.push('learning');
@@ -105,10 +108,13 @@ function classifyCandidate(candidate) {
 }
 
 function confidenceFor(candidate) {
+  const liveStatus = candidate.liveStatus || (candidate.isLivestream ? 'completed_live' : 'none');
+
   if (VIDEO_DECISIONS[candidate.externalVideoId]) return 0.95;
   if (CHANNEL_DECISIONS[candidate.channelExternalId]) return 0.88;
   if (REVIEW_STATUSES[candidate.externalVideoId]) return 0.72;
-  if (candidate.isShort || candidate.isLivestream || !candidate.embeddable) return 0.4;
+  if (candidate.isShort || liveStatus === 'live' || liveStatus === 'upcoming' || !candidate.embeddable) return 0.4;
+  if (liveStatus === 'completed_live') return 0.5;
   return 0.62;
 }
 
@@ -181,10 +187,11 @@ db.transaction(() => {
       parent_explanation,
       is_short,
       is_livestream,
+      live_status,
       published_at,
       view_count
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     RETURNING id`
   );
 
@@ -196,6 +203,7 @@ db.transaction(() => {
       channelIdsByExternalId.get(candidate.channelExternalId) ||
       insertChannel.get(candidate.source, candidate.channelExternalId, candidate.channelTitle).id;
     const classification = classifyCandidate(candidate);
+    const liveStatus = candidate.liveStatus || (candidate.isLivestream ? 'completed_live' : 'none');
     const parentExplanation =
       VIDEO_DECISIONS[candidate.externalVideoId]?.reason ||
       REVIEW_STATUSES[candidate.externalVideoId]?.reason ||
@@ -215,7 +223,8 @@ db.transaction(() => {
       childExplanationFor(candidate, classification),
       parentExplanation,
       candidate.isShort ? 1 : 0,
-      candidate.isLivestream ? 1 : 0,
+      liveStatus === 'none' ? 0 : 1,
+      liveStatus,
       candidate.publishedAt || null,
       Number(candidate.viewCount || 0)
     ).id;
@@ -281,6 +290,12 @@ db.transaction(() => {
     )
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
   );
+  const insertReviewItem = db.prepare(
+    `INSERT INTO household_review_items
+      (household_id, child_profile_id, video_id, status, reason_code)
+     VALUES (?, ?, ?, 'pending', ?)
+     ON CONFLICT(household_id, video_id) WHERE status = 'pending' DO NOTHING`
+  );
 
   for (const [externalVideoId, review] of Object.entries(REVIEW_STATUSES)) {
     const candidate = youtubeSampleCandidates.find((item) => item.externalVideoId === externalVideoId);
@@ -300,6 +315,12 @@ db.transaction(() => {
       review.reason,
       confidenceFor(candidate),
       classification.primaryCategory
+    );
+    insertReviewItem.run(
+      household.lastInsertRowid,
+      null,
+      videoIdsByExternalId.get(externalVideoId),
+      review.status
     );
   }
 })();

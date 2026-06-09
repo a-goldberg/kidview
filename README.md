@@ -81,12 +81,12 @@ assets/
 - Child profiles are not login accounts.
 - Child search results are capped at three.
 - Child search cards use standardized category icons, not native YouTube thumbnails.
-- The schema has explicit flags for Shorts and livestreams.
+- The schema has explicit flags for Shorts and live status.
 - Blocked-video reasons are stored only for parent-facing decisions and reviews.
 - Transcript text is not stored by default.
 - Search uses either mock database candidates or a YouTube Data API source adapter behind the same internal service boundary.
 - YouTube responses are normalized into KidView candidate records. Raw YouTube API responses and transcript text are not stored by default.
-- Blocked, pending-review, unknown, Short, and livestream candidates are not shown to children.
+- Blocked, pending-review, unknown, Short, live, and upcoming stream candidates are not shown to children.
 
 ## Testing The Fixture Review Flow
 
@@ -117,7 +117,7 @@ The seed data loads YouTube-shaped fixture candidates from `app/services/fixture
 
 5. Visit `http://localhost:3002/parent/reviews`.
 
-The review page demonstrates `allow`, `allow_limited`, `review_required`, `block`, `review`, `unknown`, Short, livestream, and channel decision cases. Parent notes remain parent-facing.
+The review page demonstrates `allow`, `allow_limited`, `review_required`, `block`, `review`, `unknown`, Short, live/upcoming, completed-live, and channel decision cases. Parent notes remain parent-facing.
 
 ## YouTube Data API Source
 
@@ -145,22 +145,23 @@ Because KidView calls YouTube from Node, the API key should not be restricted by
 The YouTube adapter calls `search.list`, fetches matching video details with `videos.list`, then maps each item into the same internal candidate shape used by the mock source. KidView still applies the same policy and moderation rules after that:
 
 - no Shorts
-- no livestreams
+- no currently live or upcoming streams
 - no non-embeddable videos
 - no blocked channels
 - at most three child-visible results
 - blocked, review, and unknown items stay out of the child UI
 
-Fresh YouTube candidates are evaluated by a deterministic `rule-based-v1` moderation layer. It uses title, description, channel title, duration, livestream/Short flags, embeddability, publication date, and view count. It does not use OpenAI, transcripts, thumbnails, or raw YouTube response storage.
+Fresh YouTube candidates are evaluated by a deterministic `rule-based-v1` moderation layer. It uses title, description, channel title, duration, live status, Short flags, embeddability, publication date, and view count. It does not use OpenAI, transcripts, thumbnails, or raw YouTube response storage.
 
 The rule layer can auto-allow probably-safe educational/source-backed videos, but hard blocks still win:
 
 - Shorts are blocked.
-- Livestreams and livestream-originated videos are blocked.
+- Live and upcoming streams are blocked because they cannot be assessed before child viewing.
+- Completed livestream recordings are not hard-blocked, but they usually require review unless they come from a trusted channel with strong moderation signals.
 - Non-embeddable videos are blocked before child display.
 - Blocked channels are blocked.
 - Parent video decisions override automated decisions unless a hard block applies.
-- Parent channel approvals can allow videos unless severe title/content flags appear.
+- Parent channel approvals can allow videos unless live/upcoming hard blocks or severe title/content flags apply.
 
 In development mode, the server logs how many YouTube candidates were returned, hard rejected, auto-allowed, sent to review, blocked/unknown, and shown to the child.
 
@@ -170,7 +171,7 @@ KidView currently uses `rule-based-v1` in `app/services/moderationService.js`. I
 
 Moderation runs in this order:
 
-1. Hard filters run first: Shorts, livestreams/livestream-originated videos, and blocked channels are blocked before scoring.
+1. Hard filters run first: Shorts, live/upcoming streams, and blocked channels are blocked before scoring.
 2. Parent video decisions override automated decisions unless a hard filter applies.
 3. Channel decisions apply next: `review_first` forces review, `blocked` blocks, and `approved` becomes a strong positive scoring signal.
 4. Stored automated moderation reviews are reused when no newer channel decision changes the context.
@@ -193,6 +194,7 @@ Scoring starts at `50`, then adjusts up or down:
 - `-20` clickbait title patterns.
 - `-8` creator-style channel name patterns.
 - `-14` very long videos, currently over 30 minutes.
+- Completed livestream recordings subtract points and usually stay in review unless trusted-channel signals are strong.
 - Missing description or publication date also subtracts points.
 
 The confidence score is the final score divided by `100`, clamped between `0.05` and `0.99`. For example, a final score of `78` becomes confidence `0.78`.
@@ -200,13 +202,28 @@ The confidence score is the final score divided by `100`, clamped between `0.05`
 Decision thresholds:
 
 - Severe risk flag: `block`.
-- Approved channel with no clickbait and no risky/ambiguous topic: `allow`.
-- Score `78+` with no risk tags: `allow`.
+- Approved channel with no clickbait and no risky/ambiguous topic: `allow`; completed livestream recordings also need a strong score.
+- Score `78+` with no risk tags: `allow`; completed livestream recordings can also allow at this level when the channel is approved and the completed-live tag is the only risk tag.
 - Score `70+` without clickbait: `allow_limited`.
 - Score `45+`: `review`.
 - Anything lower: `unknown`.
 
-Child search results currently include only `allow` decisions. `allow_limited`, `review`, `block`, and `unknown` stay parent-facing.
+Child search results currently include only `allow` decisions. `allow_limited`, `review`, and `unknown` stay parent-facing in the review queue. Hard-blocked items are silently filtered out of child results and do not create normal parent review queue items.
+
+Live status is tracked as `none`, `upcoming`, `live`, or `completed_live`. In v1, `live` and `upcoming` streams are hard-blocked because KidView cannot assess changing real-time content before the child watches it, and approved channels or durable video approvals do not override that block. These hard-blocked streams do not create normal parent review queue items by default. Completed livestream recordings may be reviewed or allowed later, especially when they come from trusted channels and the rest of the score is strong.
+
+## Parent Review Queue Model
+
+KidView keeps global source data separate from household workflow state:
+
+- `videos` and `channels` are source-cache tables shared across households.
+- `moderation_reviews` stores the latest moderation result for a household/video pair.
+- `household_review_items` stores parent-actionable review queue items for one household.
+- Durable parent choices still live in `household_video_decisions` and `household_channel_decisions`.
+
+The parent review page shows only pending review items whose current moderation decision is `allow_limited`, `review`, or `unknown`. Hard blocks are not parent-actionable queue items by default: Shorts, non-embeddable videos, live/upcoming streams, blocked channels, and durable household block decisions are filtered or resolved outside the normal queue.
+
+Approving or blocking a video resolves the pending review item and writes the durable household video decision. Clearing the queue marks pending items as `dismissed` for the current household only; it does not delete videos, channels, moderation reviews, search history, or parent decisions. If a child searches for the same dismissed video again later, KidView may create a new pending review item unless a durable household video/channel decision already applies.
 
 Useful searches to try with the YouTube source:
 
@@ -216,7 +233,7 @@ Useful searches to try with the YouTube source:
 - `Harry Potter behind the scenes official` should favor official/studio-style results, while still reviewing risky or rumor-style titles.
 - `mystery box unboxing` should usually go to review.
 - `funny shorts` should be blocked when the returned item is a Short.
-- `live stream gaming` should be blocked when the returned item is live or livestream-originated.
+- `live stream gaming` should be blocked when the returned item is currently live or upcoming.
 - `scary Harry Potter secrets` should usually go to review or block depending on the returned metadata.
 - `prank challenge` should usually go to review or unknown.
 

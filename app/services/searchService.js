@@ -33,9 +33,12 @@ function classifyCandidate(candidate) {
     .join(' ');
   const matchedRule = CATEGORY_RULES.find((rule) => rule.pattern.test(haystack));
   const labels = [];
+  const liveStatus = candidate.liveStatus || (candidate.isLivestream ? 'completed_live' : 'none');
 
   if (candidate.isShort) labels.push('short');
-  if (candidate.isLivestream) labels.push('livestream');
+  if (liveStatus === 'live') labels.push('live');
+  if (liveStatus === 'upcoming') labels.push('upcoming-live');
+  if (liveStatus === 'completed_live') labels.push('completed-live');
   if (!candidate.embeddable) labels.push('not-embeddable');
   if (/math|fraction|science|nature|history|animation|biology/i.test(haystack)) labels.push('learning');
   if (/dangerous|stunt|weapon|flamethrower|poison|toxin/i.test(haystack)) labels.push('needs-care');
@@ -49,7 +52,10 @@ function classifyCandidate(candidate) {
 }
 
 function confidenceFor(candidate) {
-  if (candidate.isShort || candidate.isLivestream || !candidate.embeddable) return 0.35;
+  const liveStatus = candidate.liveStatus || (candidate.isLivestream ? 'completed_live' : 'none');
+
+  if (candidate.isShort || liveStatus === 'live' || liveStatus === 'upcoming' || !candidate.embeddable) return 0.35;
+  if (liveStatus === 'completed_live') return 0.5;
   if (candidate.primaryCategoryHint) return 0.7;
   return 0.6;
 }
@@ -99,10 +105,11 @@ function upsertSourceCandidates(candidates) {
       parent_explanation,
       is_short,
       is_livestream,
+      live_status,
       published_at,
       view_count
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(source, external_id) DO UPDATE SET
       channel_id = excluded.channel_id,
       title = excluded.title,
@@ -116,6 +123,7 @@ function upsertSourceCandidates(candidates) {
       parent_explanation = excluded.parent_explanation,
       is_short = excluded.is_short,
       is_livestream = excluded.is_livestream,
+      live_status = excluded.live_status,
       published_at = excluded.published_at,
       view_count = excluded.view_count,
       updated_at = CURRENT_TIMESTAMP
@@ -135,6 +143,7 @@ function upsertSourceCandidates(candidates) {
       videos.parent_explanation AS parentExplanation,
       videos.is_short AS isShort,
       videos.is_livestream AS isLivestream,
+      videos.live_status AS liveStatus,
       videos.published_at AS publishedAt,
       videos.view_count AS viewCount,
       channels.id AS channelId,
@@ -148,6 +157,7 @@ function upsertSourceCandidates(candidates) {
     candidates
       .filter((candidate) => candidate.embeddable)
       .map((candidate) => {
+        const liveStatus = candidate.liveStatus || (candidate.isLivestream ? 'completed_live' : 'none');
         const channel = insertChannel.get(
           candidate.source,
           candidate.channelExternalId,
@@ -168,7 +178,8 @@ function upsertSourceCandidates(candidates) {
           childExplanationFor(candidate, classification),
           'No household decision has been made yet.',
           candidate.isShort ? 1 : 0,
-          candidate.isLivestream ? 1 : 0,
+          liveStatus === 'none' ? 0 : 1,
+          liveStatus,
           candidate.publishedAt || null,
           Number(candidate.viewCount || 0)
         );
@@ -213,6 +224,7 @@ async function search({ query, householdId, childProfileId }) {
   const candidates = sourceResponse.candidates;
   const moderation = moderationService.moderateCandidatesWithDiagnostics({
     householdId,
+    childProfileId,
     candidates,
     limit: 3
   });

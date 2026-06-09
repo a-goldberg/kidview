@@ -6,8 +6,8 @@ const {
 } = require('../services/householdService');
 const {
   bulkUpsertVideoDecisions,
-  deleteReviewChannels,
-  deleteReviewVideos,
+  clearReviewChannels,
+  clearReviewVideos,
   upsertChannelDecision,
   upsertVideoDecision
 } = require('../services/decisionService');
@@ -106,19 +106,21 @@ router.post('/reviews/bulk', requireParent, (req, res) => {
     });
     message = `Blocked ${count} video${count === 1 ? '' : 's'}.`;
   } else if (action === 'delete_all') {
-    count = deleteReviewVideos({
+    count = clearReviewVideos({
       householdId: req.session.parentUser.householdId,
+      parentUserId: req.session.parentUser.id,
       videoIds
     });
-    message = `Deleted ${count} review video${count === 1 ? '' : 's'}.`;
+    message = `Cleared ${count} review video${count === 1 ? '' : 's'} from this household queue.`;
   } else if (action === 'delete_channels') {
-    const result = deleteReviewChannels({
+    const result = clearReviewChannels({
       householdId: req.session.parentUser.householdId,
+      parentUserId: req.session.parentUser.id,
       channelIds: reviewQueue.channels
         .filter((channel) => !channel.decision)
         .map((channel) => channel.id)
     });
-    message = `Deleted ${result.channelsDeleted} unreviewed channel${result.channelsDeleted === 1 ? '' : 's'} and ${result.videosDeleted} related review video${result.videosDeleted === 1 ? '' : 's'}.`;
+    message = `Cleared pending review videos for ${result.channelsCleared} unreviewed channel${result.channelsCleared === 1 ? '' : 's'} from this household queue. ${result.videosCleared} video${result.videosCleared === 1 ? '' : 's'} cleared.`;
   }
 
   const query = new URLSearchParams({

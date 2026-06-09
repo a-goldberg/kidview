@@ -69,14 +69,27 @@ async function fetchYouTubeJson(path, params) {
   return body;
 }
 
-function isLiveVideo(video) {
+function liveStatusFor(video) {
   const liveBroadcastContent = video.snippet && video.snippet.liveBroadcastContent;
-  return liveBroadcastContent === 'live' || liveBroadcastContent === 'upcoming' || Boolean(video.liveStreamingDetails);
+
+  if (liveBroadcastContent === 'live') {
+    return 'live';
+  }
+
+  if (liveBroadcastContent === 'upcoming') {
+    return 'upcoming';
+  }
+
+  if (video.liveStreamingDetails) {
+    return 'completed_live';
+  }
+
+  return 'none';
 }
 
 function mapYouTubeVideo(video) {
   const durationSeconds = parseYouTubeDuration(video.contentDetails && video.contentDetails.duration);
-  const isLivestream = isLiveVideo(video);
+  const liveStatus = liveStatusFor(video);
   const statistics = video.statistics || {};
 
   return {
@@ -89,7 +102,8 @@ function mapYouTubeVideo(video) {
     durationSeconds,
     publishedAt: video.snippet.publishedAt,
     isShort: durationSeconds <= 60,
-    isLivestream,
+    isLivestream: liveStatus !== 'none',
+    liveStatus,
     embeddable: video.status && video.status.embeddable === true,
     transcriptAvailable: false,
     transcriptSample: null,
@@ -133,6 +147,7 @@ async function searchCandidates(query) {
 }
 
 module.exports = {
+  liveStatusFor,
   parseYouTubeDuration,
   searchCandidates
 };

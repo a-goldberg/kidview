@@ -26,6 +26,15 @@ const OFFICIAL_CHANNEL_PATTERN =
   /official|pbs|smithsonian|museum|national geographic|nasa|studio|pixar|science|academy|library|university|bbc|nasa/i;
 const UNKNOWN_CREATOR_PATTERN =
   /vlog|funzone|gamer|gaming|clips|squad|hyper|99|z$/i;
+const REVIEW_QUEUE_DECISIONS = new Set([
+  "allow_limited",
+  "review",
+  "unknown",
+]);
+
+function liveStatusFor(candidate) {
+  return candidate.liveStatus || (candidate.isLivestream ? "completed_live" : "none");
+}
 
 function getDecisionMaps(householdId, candidates) {
   const videoIds = candidates.map((candidate) => candidate.videoId);
@@ -152,12 +161,14 @@ function hardFilter(candidate, channelDecision) {
     };
   }
 
-  if (candidate.isLivestream) {
+  const liveStatus = liveStatusFor(candidate);
+
+  if (liveStatus === "live" || liveStatus === "upcoming") {
     return {
       decision: "block",
-      reason:
-        "Filtered because livestream-originated videos are not allowed for child search.",
-      riskTags: ["livestream"],
+      reason: `Filtered because ${liveStatus === "live" ? "live" : "upcoming"} streams cannot be assessed before child viewing.`,
+      riskTags: [liveStatus],
+      skipReviewQueue: true,
     };
   }
 
@@ -186,6 +197,7 @@ function scoreCandidate(candidate, channelDecision) {
   const viewCount = Number(candidate.viewCount || 0);
   const unknownChannel = hasUnknownChannel(channelDecision);
   const approvedChannel = hasApprovedChannel(channelDecision);
+  const liveStatus = liveStatusFor(candidate);
   const vpd = viewsPerDay(candidate);
 
   tagIf(SAFE_CATEGORY_PATTERN.test(text), contentTags, "safe-category");
@@ -218,6 +230,7 @@ function scoreCandidate(candidate, channelDecision) {
     "creator-style-channel",
   );
   tagIf(candidate.durationSeconds > 1800, riskTags, "very-long-video");
+  tagIf(liveStatus === "completed_live", riskTags, "completed-live-recording");
   tagIf(!candidate.description, riskTags, "missing-description");
   tagIf(!candidate.publishedAt, riskTags, "missing-published-date");
   tagIf(
@@ -250,6 +263,7 @@ function scoreCandidate(candidate, channelDecision) {
   if (riskTags.includes("clickbait-title")) score -= 20;
   if (riskTags.includes("creator-style-channel")) score -= 8;
   if (riskTags.includes("very-long-video")) score -= 14;
+  if (riskTags.includes("completed-live-recording")) score -= approvedChannel ? 4 : 12;
   if (riskTags.includes("missing-description")) score -= 8;
   if (riskTags.includes("missing-published-date")) score -= 6;
 
@@ -260,10 +274,18 @@ function scoreCandidate(candidate, channelDecision) {
   } else if (
     approvedChannel &&
     !riskTags.includes("clickbait-title") &&
-    !riskTags.includes("risky-or-ambiguous-topic")
+    !riskTags.includes("risky-or-ambiguous-topic") &&
+    (liveStatus !== "completed_live" || score >= 78)
   ) {
     decision = "allow";
-  } else if (score >= 78 && riskTags.length === 0) {
+  } else if (
+    score >= 78 &&
+    (riskTags.length === 0 ||
+      (approvedChannel &&
+        liveStatus === "completed_live" &&
+        riskTags.length === 1 &&
+        riskTags.includes("completed-live-recording")))
+  ) {
     decision = "allow";
   } else if (score >= 70 && !riskTags.includes("clickbait-title")) {
     decision = "allow_limited";
@@ -275,6 +297,10 @@ function scoreCandidate(candidate, channelDecision) {
     riskTags.includes("very-low-view-unknown-channel") &&
     decision === "allow_limited"
   ) {
+    decision = "review";
+  }
+
+  if (liveStatus === "completed_live" && decision === "allow_limited") {
     decision = "review";
   }
 
@@ -311,6 +337,12 @@ function scoreCandidate(candidate, channelDecision) {
   if (riskTags.includes("very-low-view-unknown-channel")) {
     parentExplanationParts.push(
       "Very low view count from an unknown channel increases review need.",
+    );
+  }
+
+  if (riskTags.includes("completed-live-recording")) {
+    parentExplanationParts.push(
+      "This is a completed livestream recording, so it needs stronger trusted-channel and quality signals before child display.",
     );
   }
 
@@ -435,7 +467,61 @@ function writeModerationReview({ householdId, candidate, result }) {
   );
 }
 
-function resolveDecision({ householdId, candidate, maps }) {
+function resolvePendingReviewItem({ householdId, candidate, reasonCode }) {
+  db.prepare(
+    `UPDATE household_review_items
+     SET
+      status = 'expired',
+      reason_code = ?,
+      resolved_at = CURRENT_TIMESTAMP,
+      updated_at = CURRENT_TIMESTAMP
+     WHERE household_id = ?
+      AND video_id = ?
+      AND status = 'pending'`,
+  ).run(reasonCode, householdId, candidate.videoId);
+}
+
+function ensurePendingReviewItem({ householdId, childProfileId, candidate, result }) {
+  if (result.decision === "allow") {
+    resolvePendingReviewItem({
+      householdId,
+      candidate,
+      reasonCode: "auto_allowed_by_moderation",
+    });
+    return;
+  }
+
+  if (!REVIEW_QUEUE_DECISIONS.has(result.decision)) {
+    resolvePendingReviewItem({
+      householdId,
+      candidate,
+      reasonCode: `not_review_queue:${result.decision || "unknown"}`,
+    });
+    return;
+  }
+
+  db.prepare(
+    `INSERT INTO household_review_items (
+      household_id,
+      child_profile_id,
+      video_id,
+      status,
+      reason_code
+    )
+    VALUES (?, ?, ?, 'pending', ?)
+    ON CONFLICT(household_id, video_id) WHERE status = 'pending' DO UPDATE SET
+      child_profile_id = COALESCE(excluded.child_profile_id, household_review_items.child_profile_id),
+      reason_code = excluded.reason_code,
+      updated_at = CURRENT_TIMESTAMP`,
+  ).run(
+    householdId,
+    childProfileId || null,
+    candidate.videoId,
+    result.decision,
+  );
+}
+
+function resolveDecision({ householdId, childProfileId, candidate, maps }) {
   const channelDecision = maps.channelDecisions.get(candidate.channelId);
   const hardBlocked = hardFilter(candidate, channelDecision);
 
@@ -450,6 +536,11 @@ function resolveDecision({ householdId, candidate, maps }) {
       parentExplanation: hardBlocked.reason,
     };
     writeModerationReview({ householdId, candidate, result });
+    resolvePendingReviewItem({
+      householdId,
+      candidate,
+      reasonCode: `hard_block:${hardBlocked.riskTags[0] || "blocked"}`,
+    });
     return {
       ...result,
       source: "hard_filter",
@@ -458,6 +549,11 @@ function resolveDecision({ householdId, candidate, maps }) {
 
   const videoDecision = maps.videoDecisions.get(candidate.videoId);
   if (videoDecision) {
+    resolvePendingReviewItem({
+      householdId,
+      candidate,
+      reasonCode: `durable_video_decision:${videoDecision.decision}`,
+    });
     return {
       decision: decisionFromParentVideo(videoDecision.decision),
       confidenceScore: 0.99,
@@ -486,19 +582,36 @@ function resolveDecision({ householdId, candidate, maps }) {
         "Household requires review before this channel appears.",
     };
     writeModerationReview({ householdId, candidate, result });
+    ensurePendingReviewItem({ householdId, childProfileId, candidate, result });
     return {
       ...result,
       source: "parent_channel_decision",
     };
   }
 
+  if (channelDecision && channelDecision.decision === "blocked") {
+    resolvePendingReviewItem({
+      householdId,
+      candidate,
+      reasonCode: "durable_channel_decision:blocked",
+    });
+  }
+
   const review = maps.reviews.get(candidate.videoId);
   if (review && !channelDecision) {
-    return resultFromStoredReview(candidate, review);
+    const result = resultFromStoredReview(candidate, review);
+    ensurePendingReviewItem({ householdId, childProfileId, candidate, result });
+    return result;
   }
 
   const automated = scoreCandidate(candidate, channelDecision);
   writeModerationReview({ householdId, candidate, result: automated });
+  ensurePendingReviewItem({
+    householdId,
+    childProfileId,
+    candidate,
+    result: automated,
+  });
 
   return {
     ...automated,
@@ -555,6 +668,7 @@ function updateDiagnostics(diagnostics, decisionResult) {
 
 function moderateCandidatesWithDiagnostics({
   householdId,
+  childProfileId,
   candidates,
   limit = 3,
 }) {
@@ -574,7 +688,12 @@ function moderateCandidatesWithDiagnostics({
 
   const maps = getDecisionMaps(householdId, candidates);
   const normalized = candidates.map((candidate) => {
-    const decisionResult = resolveDecision({ householdId, candidate, maps });
+    const decisionResult = resolveDecision({
+      householdId,
+      childProfileId,
+      candidate,
+      maps,
+    });
     updateDiagnostics(diagnostics, decisionResult);
     return normalizeCandidate(candidate, decisionResult);
   });
@@ -606,6 +725,7 @@ function selectModerationCandidate() {
     videos.parent_explanation AS parentExplanation,
     videos.is_short AS isShort,
     videos.is_livestream AS isLivestream,
+    videos.live_status AS liveStatus,
     videos.published_at AS publishedAt,
     videos.view_count AS viewCount,
     channels.id AS channelId,
