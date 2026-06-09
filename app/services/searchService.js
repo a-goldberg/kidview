@@ -98,9 +98,11 @@ function upsertSourceCandidates(candidates) {
       child_explanation,
       parent_explanation,
       is_short,
-      is_livestream
+      is_livestream,
+      published_at,
+      view_count
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(source, external_id) DO UPDATE SET
       channel_id = excluded.channel_id,
       title = excluded.title,
@@ -114,6 +116,8 @@ function upsertSourceCandidates(candidates) {
       parent_explanation = excluded.parent_explanation,
       is_short = excluded.is_short,
       is_livestream = excluded.is_livestream,
+      published_at = excluded.published_at,
+      view_count = excluded.view_count,
       updated_at = CURRENT_TIMESTAMP
     RETURNING id`
   );
@@ -131,6 +135,8 @@ function upsertSourceCandidates(candidates) {
       videos.parent_explanation AS parentExplanation,
       videos.is_short AS isShort,
       videos.is_livestream AS isLivestream,
+      videos.published_at AS publishedAt,
+      videos.view_count AS viewCount,
       channels.id AS channelId,
       channels.title AS channelTitle
      FROM videos
@@ -162,7 +168,9 @@ function upsertSourceCandidates(candidates) {
           childExplanationFor(candidate, classification),
           'No household decision has been made yet.',
           candidate.isShort ? 1 : 0,
-          candidate.isLivestream ? 1 : 0
+          candidate.isLivestream ? 1 : 0,
+          candidate.publishedAt || null,
+          Number(candidate.viewCount || 0)
         );
 
         return selectCandidate.get(video.id);
@@ -176,6 +184,7 @@ async function getSourceCandidates(query) {
     return {
       sourceName: 'youtube',
       sourceCount: youtubeCandidates.length,
+      sourceHardRejected: youtubeCandidates.filter((candidate) => !candidate.embeddable).length,
       candidates: upsertSourceCandidates(youtubeCandidates)
     };
   }
@@ -184,6 +193,7 @@ async function getSourceCandidates(query) {
   return {
     sourceName: 'mock',
     sourceCount: candidates.length,
+    sourceHardRejected: 0,
     candidates
   };
 }
@@ -201,11 +211,12 @@ async function search({ query, householdId, childProfileId }) {
 
   const sourceResponse = await getSourceCandidates(safeQuery);
   const candidates = sourceResponse.candidates;
-  const results = moderationService.moderateCandidates({
+  const moderation = moderationService.moderateCandidatesWithDiagnostics({
     householdId,
     candidates,
     limit: 3
   });
+  const results = moderation.results;
 
   // Search events intentionally store only query metadata, not transcript text.
   const searchEvent = db.prepare(
@@ -236,8 +247,16 @@ async function search({ query, householdId, childProfileId }) {
   );
 
   if (!config.isProduction && sourceResponse.sourceName === 'youtube') {
+    const hardRejected = sourceResponse.sourceHardRejected + moderation.diagnostics.hardRejected;
     console.log(
-      `YouTube source returned ${sourceResponse.sourceCount} candidate(s); ${results.length} survived KidView policy/moderation.`
+      [
+        `YouTube source returned ${sourceResponse.sourceCount} candidate(s).`,
+        `Hard rejected: ${hardRejected}.`,
+        `Auto-allowed: ${moderation.diagnostics.autoAllowed}.`,
+        `Sent to review: ${moderation.diagnostics.sentToReview}.`,
+        `Blocked/unknown: ${moderation.diagnostics.blockedOrUnknown}.`,
+        `Shown to child: ${results.length}.`
+      ].join(' ')
     );
   }
 

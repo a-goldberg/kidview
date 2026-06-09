@@ -18,6 +18,8 @@ function searchCandidates(query) {
         videos.parent_explanation AS parentExplanation,
         videos.is_short AS isShort,
         videos.is_livestream AS isLivestream,
+        videos.published_at AS publishedAt,
+        videos.view_count AS viewCount,
         channels.id AS channelId,
         channels.title AS channelTitle
        FROM videos

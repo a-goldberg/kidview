@@ -1,4 +1,5 @@
 const youtubeTestCaseVideos = [
+  /*
   {
     source: "youtube",
     externalVideoId: "3g246c6Bv58",
@@ -12,6 +13,7 @@ const youtubeTestCaseVideos = [
     isShort: false,
     isLivestream: false,
     embeddable: true,
+    viewCount: 1800000,
   },
   {
     source: "youtube",
@@ -26,6 +28,7 @@ const youtubeTestCaseVideos = [
     isShort: false,
     isLivestream: false,
     embeddable: true,
+    viewCount: 220000,
   },
   {
     source: "youtube",
@@ -40,6 +43,7 @@ const youtubeTestCaseVideos = [
     isShort: false,
     isLivestream: false,
     embeddable: true,
+    viewCount: 85000,
   },
   {
     source: "youtube",
@@ -54,6 +58,7 @@ const youtubeTestCaseVideos = [
     isShort: false,
     isLivestream: false,
     embeddable: true,
+    viewCount: 1600000000,
   },
   {
     source: "youtube",
@@ -68,6 +73,7 @@ const youtubeTestCaseVideos = [
     isShort: false,
     isLivestream: false,
     embeddable: true,
+    viewCount: 45000,
   },
   {
     source: "youtube",
@@ -82,6 +88,7 @@ const youtubeTestCaseVideos = [
     isShort: false,
     isLivestream: false,
     embeddable: true,
+    viewCount: 2200,
   },
   {
     source: "youtube",
@@ -96,6 +103,7 @@ const youtubeTestCaseVideos = [
     isShort: false,
     isLivestream: false,
     embeddable: true,
+    viewCount: 7800,
   },
   {
     source: "youtube",
@@ -111,6 +119,7 @@ const youtubeTestCaseVideos = [
     isShort: false,
     isLivestream: false,
     embeddable: true,
+    viewCount: 950000,
   },
   {
     source: "youtube",
@@ -125,6 +134,7 @@ const youtubeTestCaseVideos = [
     isShort: false,
     isLivestream: false,
     embeddable: true,
+    viewCount: 12500,
   },
   {
     source: "youtube",
@@ -139,6 +149,7 @@ const youtubeTestCaseVideos = [
     isShort: true,
     isLivestream: false,
     embeddable: true,
+    viewCount: 500000,
   },
   {
     source: "youtube",
@@ -153,6 +164,7 @@ const youtubeTestCaseVideos = [
     isShort: false,
     isLivestream: true,
     embeddable: true,
+    viewCount: 12000000,
   },
   {
     source: "youtube",
@@ -167,6 +179,7 @@ const youtubeTestCaseVideos = [
     isShort: false,
     isLivestream: false,
     embeddable: true,
+    viewCount: 210000,
   },
   {
     source: "youtube",
@@ -181,6 +194,7 @@ const youtubeTestCaseVideos = [
     isShort: false,
     isLivestream: false,
     embeddable: true,
+    viewCount: 9500,
   },
   {
     source: "youtube",
@@ -195,6 +209,7 @@ const youtubeTestCaseVideos = [
     isShort: false,
     isLivestream: false,
     embeddable: true,
+    viewCount: 420,
   },
   {
     source: "youtube",
@@ -209,6 +224,7 @@ const youtubeTestCaseVideos = [
     isShort: false,
     isLivestream: false,
     embeddable: true,
+    viewCount: 1800,
   },
   {
     source: "youtube",
@@ -223,6 +239,7 @@ const youtubeTestCaseVideos = [
     isShort: false,
     isLivestream: false,
     embeddable: true,
+    viewCount: 3800,
   },
   {
     source: "youtube",
@@ -237,6 +254,7 @@ const youtubeTestCaseVideos = [
     isShort: false,
     isLivestream: false,
     embeddable: true,
+    viewCount: 125000,
   },
   {
     source: "youtube",
@@ -251,6 +269,7 @@ const youtubeTestCaseVideos = [
     isShort: false,
     isLivestream: false,
     embeddable: true,
+    viewCount: 26000,
   },
   {
     source: "youtube",
@@ -265,7 +284,9 @@ const youtubeTestCaseVideos = [
     isShort: false,
     isLivestream: false,
     embeddable: true,
+    viewCount: 34000,
   },
+  */
 ];
 
 module.exports = youtubeTestCaseVideos;

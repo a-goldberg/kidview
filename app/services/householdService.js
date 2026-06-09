@@ -57,7 +57,7 @@ function getParentDashboard(householdId) {
         AND videos.is_livestream = 0
         AND household_video_decisions.id IS NULL
         AND (
-          moderation_reviews.status IN ('pending', 'review', 'unknown')
+          moderation_reviews.status IN ('pending', 'review', 'unknown', 'allow_limited', 'block')
           OR (moderation_reviews.id IS NULL AND household_channel_decisions.id IS NULL)
         )`
     )
@@ -100,6 +100,8 @@ function getReviewQueueWithFilters(householdId, filters = {}) {
         videos.icon_key,
         videos.labels_json,
         videos.confidence_score,
+        videos.view_count,
+        videos.published_at,
         videos.parent_explanation,
         videos.is_short,
         videos.is_livestream,
@@ -107,6 +109,11 @@ function getReviewQueueWithFilters(householdId, filters = {}) {
         channels.title AS channel_title,
         moderation_reviews.status AS review_status,
         moderation_reviews.parent_facing_reason AS review_reason,
+        moderation_reviews.confidence_score AS review_confidence_score,
+        moderation_reviews.content_tags_json AS content_tags_json,
+        moderation_reviews.risk_tags_json AS risk_tags_json,
+        moderation_reviews.quality_tags_json AS quality_tags_json,
+        moderation_reviews.model_name AS model_name,
         household_video_decisions.decision AS video_decision,
         household_video_decisions.parent_facing_reason AS video_decision_reason,
         household_channel_decisions.decision AS channel_decision,
@@ -123,6 +130,10 @@ function getReviewQueueWithFilters(householdId, filters = {}) {
         ON household_channel_decisions.channel_id = videos.channel_id
         AND household_channel_decisions.household_id = ?
        WHERE household_video_decisions.id IS NULL
+        AND (
+          moderation_reviews.id IS NULL
+          OR moderation_reviews.status != 'allow'
+        )
        ORDER BY
         videos.is_short ASC,
         videos.is_livestream ASC,
@@ -130,6 +141,8 @@ function getReviewQueueWithFilters(householdId, filters = {}) {
           WHEN 'pending' THEN 0
           WHEN 'review' THEN 1
           WHEN 'unknown' THEN 2
+          WHEN 'allow_limited' THEN 3
+          WHEN 'block' THEN 4
           ELSE 3
         END,
         videos.confidence_score DESC,
@@ -139,6 +152,9 @@ function getReviewQueueWithFilters(householdId, filters = {}) {
     .map((video) => ({
       ...video,
       labels: parseLabels(video.labels_json),
+      content_tags: parseLabels(video.content_tags_json),
+      risk_tags: parseLabels(video.risk_tags_json),
+      quality_tags: parseLabels(video.quality_tags_json),
       queue_status: reviewStatusFor(video)
     }));
 

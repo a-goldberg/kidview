@@ -180,9 +180,11 @@ db.transaction(() => {
       child_explanation,
       parent_explanation,
       is_short,
-      is_livestream
+      is_livestream,
+      published_at,
+      view_count
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     RETURNING id`
   );
 
@@ -213,7 +215,9 @@ db.transaction(() => {
       childExplanationFor(candidate, classification),
       parentExplanation,
       candidate.isShort ? 1 : 0,
-      candidate.isLivestream ? 1 : 0
+      candidate.isLivestream ? 1 : 0,
+      candidate.publishedAt || null,
+      Number(candidate.viewCount || 0)
     ).id;
 
     channelIdsByExternalId.set(candidate.channelExternalId, channelId);
@@ -253,16 +257,32 @@ db.transaction(() => {
   }
 
   const insertReview = db.prepare(
-    `INSERT INTO moderation_reviews (household_id, video_id, status, parent_facing_reason)
-     VALUES (?, ?, ?, ?)`
+    `INSERT INTO moderation_reviews (
+      household_id,
+      video_id,
+      status,
+      decision,
+      parent_facing_reason,
+      parent_explanation,
+      confidence_score,
+      primary_category
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
   );
 
   for (const [externalVideoId, review] of Object.entries(REVIEW_STATUSES)) {
+    const candidate = youtubeSampleCandidates.find((item) => item.externalVideoId === externalVideoId);
+    const classification = classifyCandidate(candidate);
+
     insertReview.run(
       household.lastInsertRowid,
       videoIdsByExternalId.get(externalVideoId),
       review.status,
-      review.reason
+      review.status,
+      review.reason,
+      review.reason,
+      confidenceFor(candidate),
+      classification.primaryCategory
     );
   }
 })();

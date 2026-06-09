@@ -151,14 +151,36 @@ The YouTube adapter calls `search.list`, fetches matching video details with `vi
 - at most three child-visible results
 - blocked, review, and unknown items stay out of the child UI
 
-Fresh YouTube candidates will usually need parent review or household decisions before they appear to children. In development mode, the server logs how many YouTube candidates were returned and how many survived policy/moderation.
+Fresh YouTube candidates are evaluated by a deterministic `rule-based-v1` moderation layer. It uses title, description, channel title, duration, livestream/Short flags, embeddability, publication date, and view count. It does not use OpenAI, transcripts, thumbnails, or raw YouTube response storage.
+
+The rule layer can auto-allow probably-safe educational/source-backed videos, but hard blocks still win:
+
+- Shorts are blocked.
+- Livestreams and livestream-originated videos are blocked.
+- Non-embeddable videos are blocked before child display.
+- Blocked channels are blocked.
+- Parent video decisions override automated decisions unless a hard block applies.
+- Parent channel approvals can allow videos unless severe title/content flags appear.
+
+In development mode, the server logs how many YouTube candidates were returned, hard rejected, auto-allowed, sent to review, blocked/unknown, and shown to the child.
 
 Useful searches to try with the YouTube source:
 
-- `basic fractions for kids`
-- `sea otters science`
-- `how clouds make rain`
-- `beginner animation for kids`
+- `otter facts for kids` should usually auto-allow clear educational results from reputable channels.
+- `how rockets work for kids` should usually auto-allow or allow limited when the result is clearly educational.
+- `paper airplane tutorial` should usually auto-allow calm tutorial results.
+- `Harry Potter behind the scenes official` should favor official/studio-style results, while still reviewing risky or rumor-style titles.
+- `mystery box unboxing` should usually go to review.
+- `funny shorts` should be blocked when the returned item is a Short.
+- `live stream gaming` should be blocked when the returned item is live or livestream-originated.
+- `scary Harry Potter secrets` should usually go to review or block depending on the returned metadata.
+- `prank challenge` should usually go to review or unknown.
+
+After pulling schema changes for rule-based moderation, run:
+
+```sh
+npm run db:migrate
+```
 
 Switch back to fixture mode at any time with:
 

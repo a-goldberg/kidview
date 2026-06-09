@@ -77,6 +77,7 @@ function isLiveVideo(video) {
 function mapYouTubeVideo(video) {
   const durationSeconds = parseYouTubeDuration(video.contentDetails && video.contentDetails.duration);
   const isLivestream = isLiveVideo(video);
+  const statistics = video.statistics || {};
 
   return {
     source: 'youtube',
@@ -92,7 +93,10 @@ function mapYouTubeVideo(video) {
     embeddable: video.status && video.status.embeddable === true,
     transcriptAvailable: false,
     transcriptSample: null,
-    primaryCategoryHint: null
+    primaryCategoryHint: null,
+    viewCount: Number(statistics.viewCount || 0),
+    likeCount: Number(statistics.likeCount || 0),
+    commentCount: Number(statistics.commentCount || 0)
   };
 }
 
@@ -119,7 +123,7 @@ async function searchCandidates(query) {
   }
 
   const videosResponse = await fetchYouTubeJson('videos', {
-    part: 'snippet,contentDetails,status,liveStreamingDetails',
+    part: 'snippet,contentDetails,status,liveStreamingDetails,statistics',
     id: videoIds.join(',')
   });
 

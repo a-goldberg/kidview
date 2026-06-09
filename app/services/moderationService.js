@@ -7,6 +7,23 @@ const ICON_PATHS = {
   science: '/icons/science.svg'
 };
 
+const RULE_MODEL_NAME = 'rule-based-v1';
+const RULE_PROMPT_VERSION = 'rules-v1';
+
+const SEVERE_RISK_PATTERN =
+  /suicide|self[- ]?harm|porn|sexual|gore|graphic|murder|kill|weapon|gun|knife|flamethrower|poison|toxin|dangerous|skyscraper|rooftop/i;
+const RISK_PATTERN =
+  /scary|secret|secrets|exposed|drama|breakup|rumor|prank|challenge|mystery box|unboxing|haul|shopping|spent \$|won't believe|do not try|gaming|minecraft|roblox|fortnite|dark fantasy|pvp/i;
+const CLICKBAIT_PATTERN = /!!!|😱|🔥|you won't believe|what happened next|watch until the end|shocking|insane/i;
+const EDUCATIONAL_PATTERN =
+  /for kids|explained|how .* works|why .*|science|facts|tutorial|lesson|learn|beginner|history|math|fraction|biology|nature|paper airplane|behind the scenes/i;
+const CHILD_INTENT_PATTERN = /for kids|beginner|simple|easy|lesson|tutorial|facts/i;
+const SAFE_CATEGORY_PATTERN =
+  /science|math|fraction|nature|animal|otter|rocket|paper airplane|animation|art|craft|behind the scenes|official|studio/i;
+const OFFICIAL_CHANNEL_PATTERN =
+  /official|pbs|smithsonian|museum|national geographic|nasa|studio|pixar|science|academy|library|university/i;
+const UNKNOWN_CREATOR_PATTERN = /vlog|funzone|gamer|gaming|clips|squad|hyper|99|z$/i;
+
 function getDecisionMaps(householdId, candidates) {
   const videoIds = candidates.map((candidate) => candidate.videoId);
   const channelIds = [...new Set(candidates.map((candidate) => candidate.channelId))];
@@ -29,7 +46,7 @@ function getDecisionMaps(householdId, candidates) {
       });
 
     db.prepare(
-      `SELECT video_id, status, parent_facing_reason
+      `SELECT video_id, status, decision, parent_facing_reason, parent_explanation
        FROM moderation_reviews
        WHERE household_id = ? AND video_id IN (${placeholders})`
     )
@@ -69,68 +86,323 @@ function parseLabels(labelsJson) {
   }
 }
 
-function resolveDecision(candidate, maps) {
+function ageInDays(publishedAt, now = new Date()) {
+  const published = new Date(publishedAt);
+
+  if (!publishedAt || Number.isNaN(published.getTime())) {
+    return null;
+  }
+
+  return Math.max(0, Math.floor((now.getTime() - published.getTime()) / (1000 * 60 * 60 * 24)));
+}
+
+function viewsPerDay(candidate) {
+  const days = ageInDays(candidate.publishedAt);
+
+  if (days === null) {
+    return null;
+  }
+
+  return Number(candidate.viewCount || 0) / Math.max(days, 1);
+}
+
+function tagIf(condition, tags, tag) {
+  if (condition) {
+    tags.push(tag);
+  }
+}
+
+function confidenceFromScore(score) {
+  return Math.max(0.05, Math.min(0.99, score / 100));
+}
+
+function hasApprovedChannel(channelDecision) {
+  return channelDecision && channelDecision.decision === 'approved';
+}
+
+function hasUnknownChannel(channelDecision) {
+  return !channelDecision;
+}
+
+function hardFilter(candidate, channelDecision) {
   if (candidate.isShort) {
     return {
       decision: 'block',
-      parentExplanation: 'Filtered because Shorts are not allowed for child search.'
+      reason: 'Filtered because Shorts are not allowed for child search.',
+      riskTags: ['short']
     };
   }
 
   if (candidate.isLivestream) {
     return {
       decision: 'block',
-      parentExplanation: 'Filtered because livestreams are not allowed for child search.'
+      reason: 'Filtered because livestream-originated videos are not allowed for child search.',
+      riskTags: ['livestream']
+    };
+  }
+
+  if (channelDecision && channelDecision.decision === 'blocked') {
+    return {
+      decision: 'block',
+      reason: channelDecision.parent_facing_reason || 'Blocked because this household blocked the channel.',
+      riskTags: ['blocked-channel']
+    };
+  }
+
+  return null;
+}
+
+function scoreCandidate(candidate, channelDecision) {
+  let score = 50;
+  const text = [candidate.title, candidate.description, candidate.channelTitle]
+    .filter(Boolean)
+    .join(' ');
+  const title = candidate.title || '';
+  const contentTags = [];
+  const riskTags = [];
+  const qualityTags = [];
+  const viewCount = Number(candidate.viewCount || 0);
+  const unknownChannel = hasUnknownChannel(channelDecision);
+  const approvedChannel = hasApprovedChannel(channelDecision);
+  const vpd = viewsPerDay(candidate);
+
+  tagIf(SAFE_CATEGORY_PATTERN.test(text), contentTags, 'safe-category');
+  tagIf(EDUCATIONAL_PATTERN.test(text), contentTags, 'educational');
+  tagIf(CHILD_INTENT_PATTERN.test(text), contentTags, 'clear-child-friendly-intent');
+  tagIf(OFFICIAL_CHANNEL_PATTERN.test(candidate.channelTitle || ''), qualityTags, 'official-or-source-backed-channel');
+  tagIf(approvedChannel, qualityTags, 'household-approved-channel');
+  tagIf(candidate.durationSeconds >= 120 && candidate.durationSeconds <= 900, qualityTags, 'reasonable-duration');
+  tagIf(viewCount >= 100000, qualityTags, 'established-view-history');
+  tagIf(vpd !== null && vpd >= 500, qualityTags, 'healthy-views-per-day');
+
+  tagIf(RISK_PATTERN.test(text), riskTags, 'risky-or-ambiguous-topic');
+  tagIf(SEVERE_RISK_PATTERN.test(text), riskTags, 'severe-risk-flag');
+  tagIf(CLICKBAIT_PATTERN.test(title), riskTags, 'clickbait-title');
+  tagIf(UNKNOWN_CREATOR_PATTERN.test(candidate.channelTitle || ''), riskTags, 'creator-style-channel');
+  tagIf(candidate.durationSeconds > 1800, riskTags, 'very-long-video');
+  tagIf(!candidate.description, riskTags, 'missing-description');
+  tagIf(!candidate.publishedAt, riskTags, 'missing-published-date');
+  tagIf(viewCount < 1000 && unknownChannel, riskTags, 'very-low-view-unknown-channel');
+  tagIf(viewCount < 10000 && unknownChannel, riskTags, 'limited-view-unknown-channel');
+
+  if (contentTags.includes('safe-category')) score += 10;
+  if (contentTags.includes('educational')) score += 12;
+  if (contentTags.includes('clear-child-friendly-intent')) score += 8;
+  if (qualityTags.includes('official-or-source-backed-channel')) score += 12;
+  if (qualityTags.includes('household-approved-channel')) score += 20;
+  if (qualityTags.includes('reasonable-duration')) score += 6;
+
+  if (viewCount >= 1000000) score += 10;
+  else if (viewCount >= 100000) score += 6;
+  else if (viewCount >= 10000) score += 2;
+  else if (viewCount >= 1000 && unknownChannel) score -= 5;
+  else if (viewCount < 1000 && unknownChannel) score -= 15;
+  else if (viewCount < 1000) score -= 3;
+
+  if (riskTags.includes('risky-or-ambiguous-topic')) score -= 18;
+  if (riskTags.includes('severe-risk-flag')) score -= 40;
+  if (riskTags.includes('clickbait-title')) score -= 20;
+  if (riskTags.includes('creator-style-channel')) score -= 8;
+  if (riskTags.includes('very-long-video')) score -= 14;
+  if (riskTags.includes('missing-description')) score -= 8;
+  if (riskTags.includes('missing-published-date')) score -= 6;
+
+  let decision = 'unknown';
+
+  if (riskTags.includes('severe-risk-flag')) {
+    decision = 'block';
+  } else if (approvedChannel && !riskTags.includes('clickbait-title') && !riskTags.includes('risky-or-ambiguous-topic')) {
+    decision = 'allow';
+  } else if (score >= 78 && riskTags.length === 0) {
+    decision = 'allow';
+  } else if (score >= 70 && !riskTags.includes('clickbait-title')) {
+    decision = 'allow_limited';
+  } else if (score >= 45) {
+    decision = 'review';
+  }
+
+  if (riskTags.includes('very-low-view-unknown-channel') && decision === 'allow_limited') {
+    decision = 'review';
+  }
+
+  const parentExplanationParts = [];
+
+  if (decision === 'allow') {
+    parentExplanationParts.push('Rule-based moderation found clear educational or source-backed signals.');
+  } else if (decision === 'allow_limited') {
+    parentExplanationParts.push('Rule-based moderation found mostly safe signals, but parent review may still be useful.');
+  } else if (decision === 'review') {
+    parentExplanationParts.push('Rule-based moderation found mixed or incomplete signals, so this was sent for review.');
+  } else if (decision === 'block') {
+    parentExplanationParts.push('Rule-based moderation found a severe risk flag.');
+  } else {
+    parentExplanationParts.push('Rule-based moderation did not find enough context for an automated allow.');
+  }
+
+  if (riskTags.includes('limited-view-unknown-channel')) {
+    parentExplanationParts.push('This video has limited view history from an unknown channel.');
+  }
+
+  if (riskTags.includes('very-low-view-unknown-channel')) {
+    parentExplanationParts.push('Very low view count from an unknown channel increases review need.');
+  }
+
+  if (vpd !== null) {
+    parentExplanationParts.push(`Views per day estimate: ${Math.round(vpd)}.`);
+  }
+
+  return {
+    decision,
+    confidenceScore: confidenceFromScore(score),
+    primaryCategory: candidate.primaryCategory || 'General',
+    contentTags,
+    riskTags,
+    qualityTags,
+    childExplanation: childExplanationFor(candidate),
+    parentExplanation: parentExplanationParts.join(' '),
+    score
+  };
+}
+
+function childExplanationFor(candidate) {
+  if (candidate.primaryCategory === 'Animals') {
+    return 'A calm video about animals or nature.';
+  }
+
+  if (candidate.primaryCategory === 'Science') {
+    return 'A clear video that explains an idea.';
+  }
+
+  if (candidate.primaryCategory === 'Art') {
+    return 'A video about making, building, or animation.';
+  }
+
+  return 'A KidView-approved video.';
+}
+
+function decisionFromParentVideo(decision) {
+  const decisionMap = {
+    allow: 'allow',
+    allow_limited: 'allow_limited',
+    review_required: 'review',
+    block: 'block'
+  };
+
+  return decisionMap[decision] || 'unknown';
+}
+
+function writeModerationReview({ householdId, candidate, result }) {
+  db.prepare(
+    `INSERT INTO moderation_reviews (
+      household_id,
+      video_id,
+      status,
+      decision,
+      parent_facing_reason,
+      confidence_score,
+      primary_category,
+      content_tags_json,
+      risk_tags_json,
+      quality_tags_json,
+      child_explanation,
+      parent_explanation,
+      model_name,
+      prompt_version,
+      transcript_used
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+    ON CONFLICT(household_id, video_id) DO UPDATE SET
+      status = excluded.status,
+      decision = excluded.decision,
+      parent_facing_reason = excluded.parent_facing_reason,
+      confidence_score = excluded.confidence_score,
+      primary_category = excluded.primary_category,
+      content_tags_json = excluded.content_tags_json,
+      risk_tags_json = excluded.risk_tags_json,
+      quality_tags_json = excluded.quality_tags_json,
+      child_explanation = excluded.child_explanation,
+      parent_explanation = excluded.parent_explanation,
+      model_name = excluded.model_name,
+      prompt_version = excluded.prompt_version,
+      transcript_used = excluded.transcript_used`
+  ).run(
+    householdId,
+    candidate.videoId,
+    result.decision,
+    result.decision,
+    result.parentExplanation,
+    result.confidenceScore,
+    result.primaryCategory,
+    JSON.stringify(result.contentTags || []),
+    JSON.stringify(result.riskTags || []),
+    JSON.stringify(result.qualityTags || []),
+    result.childExplanation,
+    result.parentExplanation,
+    RULE_MODEL_NAME,
+    RULE_PROMPT_VERSION
+  );
+}
+
+function resolveDecision({ householdId, candidate, maps }) {
+  const channelDecision = maps.channelDecisions.get(candidate.channelId);
+  const hardBlocked = hardFilter(candidate, channelDecision);
+
+  if (hardBlocked) {
+    const result = {
+      ...hardBlocked,
+      confidenceScore: 0.99,
+      primaryCategory: candidate.primaryCategory || 'General',
+      contentTags: parseLabels(candidate.labelsJson),
+      qualityTags: [],
+      childExplanation: '',
+      parentExplanation: hardBlocked.reason
+    };
+    writeModerationReview({ householdId, candidate, result });
+    return {
+      ...result,
+      source: 'hard_filter'
     };
   }
 
   const videoDecision = maps.videoDecisions.get(candidate.videoId);
   if (videoDecision) {
-    const decisionMap = {
-      allow: 'allow',
-      allow_limited: 'allow_limited',
-      review_required: 'review',
-      block: 'block'
-    };
-
     return {
-      decision: decisionMap[videoDecision.decision] || 'unknown',
-      parentExplanation: videoDecision.parent_facing_reason || candidate.parentExplanation
+      decision: decisionFromParentVideo(videoDecision.decision),
+      confidenceScore: 0.99,
+      primaryCategory: candidate.primaryCategory || 'General',
+      contentTags: parseLabels(candidate.labelsJson),
+      riskTags: [],
+      qualityTags: ['parent-video-decision'],
+      childExplanation: candidate.childExplanation,
+      parentExplanation: videoDecision.parent_facing_reason || candidate.parentExplanation || '',
+      source: 'parent_video_decision'
     };
   }
 
-  const channelDecision = maps.channelDecisions.get(candidate.channelId);
-  if (channelDecision) {
-    const decisionMap = {
-      approved: 'allow',
-      review_first: 'review',
-      blocked: 'block'
-    };
-
-    return {
-      decision: decisionMap[channelDecision.decision] || 'unknown',
-      parentExplanation: channelDecision.parent_facing_reason || candidate.parentExplanation
-    };
-  }
-
-  const review = maps.reviews.get(candidate.videoId);
-  if (review && review.status === 'pending') {
-    return {
+  if (channelDecision && channelDecision.decision === 'review_first') {
+    const result = {
       decision: 'review',
-      parentExplanation: review.parent_facing_reason || candidate.parentExplanation
+      confidenceScore: 0.95,
+      primaryCategory: candidate.primaryCategory || 'General',
+      contentTags: parseLabels(candidate.labelsJson),
+      riskTags: ['channel-review-first'],
+      qualityTags: [],
+      childExplanation: '',
+      parentExplanation: channelDecision.parent_facing_reason || 'Household requires review before this channel appears.'
+    };
+    writeModerationReview({ householdId, candidate, result });
+    return {
+      ...result,
+      source: 'parent_channel_decision'
     };
   }
 
-  if (review) {
-    return {
-      decision: review.status,
-      parentExplanation: review.parent_facing_reason || candidate.parentExplanation
-    };
-  }
+  const automated = scoreCandidate(candidate, channelDecision);
+  writeModerationReview({ householdId, candidate, result: automated });
 
   return {
-    decision: 'unknown',
-    parentExplanation: candidate.parentExplanation
+    ...automated,
+    source: 'rule_based'
   };
 }
 
@@ -142,29 +414,66 @@ function normalizeCandidate(candidate, decisionResult) {
     title: candidate.title,
     channelTitle: candidate.channelTitle,
     durationSeconds: candidate.durationSeconds,
-    primaryCategory: candidate.primaryCategory,
+    primaryCategory: decisionResult.primaryCategory || candidate.primaryCategory,
     iconKey,
     iconPath: ICON_PATHS[iconKey] || ICON_PATHS.general,
-    labels: parseLabels(candidate.labelsJson),
+    labels: [
+      ...parseLabels(candidate.labelsJson),
+      ...(decisionResult.contentTags || []),
+      ...(decisionResult.qualityTags || [])
+    ],
     decision: decisionResult.decision,
-    confidenceScore: candidate.confidenceScore,
-    childExplanation: candidate.childExplanation,
+    confidenceScore: decisionResult.confidenceScore,
+    childExplanation: decisionResult.childExplanation || candidate.childExplanation,
     parentExplanation: decisionResult.parentExplanation || candidate.parentExplanation || '',
     watchUrl: `/child/videos/${candidate.videoId}`
   };
 }
 
-function moderateCandidates({ householdId, candidates, limit = 3 }) {
+function updateDiagnostics(diagnostics, decisionResult) {
+  if (decisionResult.source === 'hard_filter') {
+    diagnostics.hardRejected += 1;
+  }
+
+  if (decisionResult.decision === 'allow') {
+    diagnostics.autoAllowed += decisionResult.source === 'rule_based' ? 1 : 0;
+  } else if (decisionResult.decision === 'review' || decisionResult.decision === 'allow_limited') {
+    diagnostics.sentToReview += 1;
+  } else if (decisionResult.decision === 'block' || decisionResult.decision === 'unknown') {
+    diagnostics.blockedOrUnknown += 1;
+  }
+}
+
+function moderateCandidatesWithDiagnostics({ householdId, candidates, limit = 3 }) {
+  const diagnostics = {
+    hardRejected: 0,
+    autoAllowed: 0,
+    sentToReview: 0,
+    blockedOrUnknown: 0
+  };
+
   if (!householdId || !candidates.length) {
-    return [];
+    return {
+      results: [],
+      diagnostics
+    };
   }
 
   const maps = getDecisionMaps(householdId, candidates);
+  const normalized = candidates.map((candidate) => {
+    const decisionResult = resolveDecision({ householdId, candidate, maps });
+    updateDiagnostics(diagnostics, decisionResult);
+    return normalizeCandidate(candidate, decisionResult);
+  });
 
-  return candidates
-    .map((candidate) => normalizeCandidate(candidate, resolveDecision(candidate, maps)))
-    .filter((result) => result.decision === 'allow' || result.decision === 'allow_limited')
-    .slice(0, limit);
+  return {
+    results: normalized.filter((result) => result.decision === 'allow').slice(0, limit),
+    diagnostics
+  };
+}
+
+function moderateCandidates({ householdId, candidates, limit = 3 }) {
+  return moderateCandidatesWithDiagnostics({ householdId, candidates, limit }).results;
 }
 
 function getChildSafeVideo({ householdId, videoId }) {
@@ -183,6 +492,8 @@ function getChildSafeVideo({ householdId, videoId }) {
         videos.parent_explanation AS parentExplanation,
         videos.is_short AS isShort,
         videos.is_livestream AS isLivestream,
+        videos.published_at AS publishedAt,
+        videos.view_count AS viewCount,
         channels.id AS channelId,
         channels.title AS channelTitle
        FROM videos
@@ -205,6 +516,9 @@ function getChildSafeVideo({ householdId, videoId }) {
 }
 
 module.exports = {
+  ageInDays,
+  getChildSafeVideo,
   moderateCandidates,
-  getChildSafeVideo
+  moderateCandidatesWithDiagnostics,
+  viewsPerDay
 };

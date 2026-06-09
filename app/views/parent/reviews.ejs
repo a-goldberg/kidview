@@ -19,6 +19,8 @@
         <option value="all" <%= reviewQueue.filters.status === 'all' ? 'selected' : '' %>>All review items</option>
         <option value="review" <%= reviewQueue.filters.status === 'review' ? 'selected' : '' %>>Review</option>
         <option value="unknown" <%= reviewQueue.filters.status === 'unknown' ? 'selected' : '' %>>Unknown</option>
+        <option value="allow_limited" <%= reviewQueue.filters.status === 'allow_limited' ? 'selected' : '' %>>Allow limited</option>
+        <option value="block" <%= reviewQueue.filters.status === 'block' ? 'selected' : '' %>>Blocked by rules</option>
         <option value="undecided" <%= reviewQueue.filters.status === 'undecided' ? 'selected' : '' %>>Undecided</option>
         <option value="short" <%= reviewQueue.filters.status === 'short' ? 'selected' : '' %>>Shorts</option>
         <option value="livestream" <%= reviewQueue.filters.status === 'livestream' ? 'selected' : '' %>>Livestreams</option>
@@ -57,7 +59,22 @@
             <details class="info-disclosure">
               <summary>Details</summary>
               <p><%= video.description %></p>
+              <p class="muted">Rule confidence: <strong><%= Math.round((video.review_confidence_score || video.confidence_score || 0) * 100) %>%</strong></p>
+              <p class="muted">Views: <strong><%= Number(video.view_count || 0).toLocaleString() %></strong></p>
               <p class="review-reason"><%= video.review_reason || video.parent_explanation || 'No parent note yet.' %></p>
+              <% if (video.content_tags.length || video.quality_tags.length || video.risk_tags.length) { %>
+                <ul class="label-list">
+                  <% video.content_tags.forEach((tag) => { %>
+                    <li><%= tag %></li>
+                  <% }) %>
+                  <% video.quality_tags.forEach((tag) => { %>
+                    <li><%= tag %></li>
+                  <% }) %>
+                  <% video.risk_tags.forEach((tag) => { %>
+                    <li><%= tag %></li>
+                  <% }) %>
+                </ul>
+              <% } %>
             </details>
           </div>
 

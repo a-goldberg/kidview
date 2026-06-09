@@ -37,17 +37,21 @@ function upsertVideoDecision({ householdId, videoId, parentUserId, decision, rea
 
     db.prepare(
       `INSERT INTO moderation_reviews
-        (household_id, video_id, status, parent_facing_reason, reviewed_by_parent_user_id, reviewed_at)
-       VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        (household_id, video_id, status, decision, parent_facing_reason, parent_explanation, reviewed_by_parent_user_id, reviewed_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
        ON CONFLICT(household_id, video_id) DO UPDATE SET
         status = excluded.status,
+        decision = excluded.decision,
         parent_facing_reason = excluded.parent_facing_reason,
+        parent_explanation = excluded.parent_explanation,
         reviewed_by_parent_user_id = excluded.reviewed_by_parent_user_id,
         reviewed_at = CURRENT_TIMESTAMP`
     ).run(
       householdId,
       videoId,
       videoDecisionToReviewStatus(normalizedDecision),
+      videoDecisionToReviewStatus(normalizedDecision),
+      parentReason,
       parentReason,
       parentUserId
     );
