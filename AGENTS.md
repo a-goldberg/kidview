@@ -55,3 +55,7 @@ When large changes are called for in response to a user request, aim to implemen
 Following any signficant code changes involving creation of new routes, pages, components, etc., review the current working branch as a senior Node/Express developer. Focus on security, simplicity, maintainability, and whether the codebase is understandable for a technical non-developer. Identify specific improvements and explain why they matter.
 
 When reviewing the project (e.g., after large code changes or branch merges), find places where this codebase violates its own conventions. Look for duplicate CSS patterns, inconsistent route naming, unused dependencies, hard-coded project data, and anything that would make future project additions harder.
+
+## User Interaction Preferences
+
+Don't assume. If the user does not provide enough detail to confidently execute their request, then do not proceed. Finish processing and preparing a plan for responding, but ask the user for clarification before finalizing and executing that plan. Display a list of the ambiguous points or missing information, and then step through each one with interactive prompts, giving the user a chance to fill in the gaps. Only change code when you are confident in the user's intent and expected outcome.

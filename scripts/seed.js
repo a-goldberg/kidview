@@ -231,9 +231,15 @@ db.transaction(() => {
   );
 
   for (const [externalVideoId, decision] of Object.entries(VIDEO_DECISIONS)) {
+    const videoId = videoIdsByExternalId.get(externalVideoId);
+
+    if (!videoId) {
+      continue;
+    }
+
     insertVideoDecision.run(
       household.lastInsertRowid,
-      videoIdsByExternalId.get(externalVideoId),
+      videoId,
       decision.decision,
       decision.reason,
       parentUser.lastInsertRowid
@@ -247,9 +253,15 @@ db.transaction(() => {
   );
 
   for (const [externalChannelId, decision] of Object.entries(CHANNEL_DECISIONS)) {
+    const channelId = channelIdsByExternalId.get(externalChannelId);
+
+    if (!channelId) {
+      continue;
+    }
+
     insertChannelDecision.run(
       household.lastInsertRowid,
-      channelIdsByExternalId.get(externalChannelId),
+      channelId,
       decision.decision,
       decision.reason,
       parentUser.lastInsertRowid
@@ -272,6 +284,11 @@ db.transaction(() => {
 
   for (const [externalVideoId, review] of Object.entries(REVIEW_STATUSES)) {
     const candidate = youtubeSampleCandidates.find((item) => item.externalVideoId === externalVideoId);
+
+    if (!candidate || !videoIdsByExternalId.get(externalVideoId)) {
+      continue;
+    }
+
     const classification = classifyCandidate(candidate);
 
     insertReview.run(

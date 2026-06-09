@@ -46,7 +46,18 @@ function getDecisionMaps(householdId, candidates) {
       });
 
     db.prepare(
-      `SELECT video_id, status, decision, parent_facing_reason, parent_explanation
+      `SELECT
+        video_id,
+        status,
+        decision,
+        parent_facing_reason,
+        parent_explanation,
+        confidence_score,
+        primary_category,
+        content_tags_json,
+        risk_tags_json,
+        quality_tags_json,
+        child_explanation
        FROM moderation_reviews
        WHERE household_id = ? AND video_id IN (${placeholders})`
     )
@@ -291,6 +302,29 @@ function decisionFromParentVideo(decision) {
   return decisionMap[decision] || 'unknown';
 }
 
+function decisionFromStoredReview(review) {
+  const decision = review.decision || review.status || 'unknown';
+  return decision === 'pending' ? 'review' : decision;
+}
+
+function resultFromStoredReview(candidate, review) {
+  return {
+    decision: decisionFromStoredReview(review),
+    confidenceScore: review.confidence_score || candidate.confidenceScore || 0.5,
+    primaryCategory: review.primary_category || candidate.primaryCategory || 'General',
+    contentTags: parseLabels(review.content_tags_json),
+    riskTags: parseLabels(review.risk_tags_json),
+    qualityTags: parseLabels(review.quality_tags_json),
+    childExplanation: review.child_explanation || candidate.childExplanation,
+    parentExplanation:
+      review.parent_explanation ||
+      review.parent_facing_reason ||
+      candidate.parentExplanation ||
+      '',
+    source: 'stored_moderation_review'
+  };
+}
+
 function writeModerationReview({ householdId, candidate, result }) {
   db.prepare(
     `INSERT INTO moderation_reviews (
@@ -395,6 +429,11 @@ function resolveDecision({ householdId, candidate, maps }) {
       ...result,
       source: 'parent_channel_decision'
     };
+  }
+
+  const review = maps.reviews.get(candidate.videoId);
+  if (review && !channelDecision) {
+    return resultFromStoredReview(candidate, review);
   }
 
   const automated = scoreCandidate(candidate, channelDecision);

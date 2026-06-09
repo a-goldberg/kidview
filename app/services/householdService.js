@@ -87,7 +87,9 @@ function reviewStatusFor(video) {
 function getReviewQueueWithFilters(householdId, filters = {}) {
   const search = String(filters.search || '').trim();
   const status = String(filters.status || 'all');
+  const sort = String(filters.sort || 'status');
   const likeSearch = search.toLowerCase();
+  const requestCounts = getShownVideoRequestCounts(householdId);
 
   let videos = db
     .prepare(
@@ -102,6 +104,7 @@ function getReviewQueueWithFilters(householdId, filters = {}) {
         videos.confidence_score,
         videos.view_count,
         videos.published_at,
+        videos.created_at,
         videos.parent_explanation,
         videos.is_short,
         videos.is_livestream,
@@ -155,7 +158,8 @@ function getReviewQueueWithFilters(householdId, filters = {}) {
       content_tags: parseLabels(video.content_tags_json),
       risk_tags: parseLabels(video.risk_tags_json),
       quality_tags: parseLabels(video.quality_tags_json),
-      queue_status: reviewStatusFor(video)
+      queue_status: reviewStatusFor(video),
+      request_count: requestCounts.get(video.id) || 0
     }));
 
   if (search) {
@@ -168,7 +172,10 @@ function getReviewQueueWithFilters(householdId, filters = {}) {
         video.review_reason,
         video.channel_decision,
         video.queue_status,
-        ...video.labels
+        ...video.labels,
+        ...video.content_tags,
+        ...video.risk_tags,
+        ...video.quality_tags
       ]
         .filter(Boolean)
         .join(' ')
@@ -181,6 +188,8 @@ function getReviewQueueWithFilters(householdId, filters = {}) {
   if (status !== 'all') {
     videos = videos.filter((video) => video.queue_status === status);
   }
+
+  videos = sortReviewVideos(videos, sort);
 
   let channels = db
     .prepare(
@@ -216,17 +225,85 @@ function getReviewQueueWithFilters(householdId, filters = {}) {
   return {
     filters: {
       search,
-      status
+      status,
+      sort
     },
+    bulkMessage: String(filters.bulkMessage || ''),
     videos,
     channels
   };
 }
 
+function getShownVideoRequestCounts(householdId) {
+  const counts = new Map();
+  const rows = db
+    .prepare(
+      `SELECT shown_video_ids_json
+       FROM search_events
+       WHERE household_id = ?`
+    )
+    .all(householdId);
+
+  rows.forEach((row) => {
+    parseLabels(row.shown_video_ids_json).forEach((videoId) => {
+      const id = Number(videoId);
+      counts.set(id, (counts.get(id) || 0) + 1);
+    });
+  });
+
+  return counts;
+}
+
+function sortReviewVideos(videos, sort) {
+  const sorted = [...videos];
+  const statusRank = {
+    pending: 0,
+    review: 1,
+    unknown: 2,
+    allow_limited: 3,
+    block: 4,
+    undecided: 5
+  };
+
+  sorted.sort((a, b) => {
+    if (sort === 'date_oldest') {
+      return String(a.created_at || '').localeCompare(String(b.created_at || '')) || a.id - b.id;
+    }
+
+    if (sort === 'requests') {
+      return b.request_count - a.request_count || String(b.created_at || '').localeCompare(String(a.created_at || ''));
+    }
+
+    if (sort === 'confidence_low') {
+      const aConfidence = a.review_confidence_score || a.confidence_score || 0;
+      const bConfidence = b.review_confidence_score || b.confidence_score || 0;
+      return aConfidence - bConfidence || String(b.created_at || '').localeCompare(String(a.created_at || ''));
+    }
+
+    if (sort === 'risk') {
+      return b.risk_tags.length - a.risk_tags.length || String(b.created_at || '').localeCompare(String(a.created_at || ''));
+    }
+
+    if (sort === 'date_newest') {
+      return String(b.created_at || '').localeCompare(String(a.created_at || '')) || b.id - a.id;
+    }
+
+    return (
+      (statusRank[a.queue_status] ?? 9) - (statusRank[b.queue_status] ?? 9) ||
+      String(b.created_at || '').localeCompare(String(a.created_at || '')) ||
+      a.id - b.id
+    );
+  });
+
+  return sorted;
+}
+
 function getDecisionHistory(householdId, filters = {}) {
   const search = String(filters.search || '').trim();
   const kind = filters.kind === 'channel' ? 'channel' : filters.kind === 'video' ? 'video' : 'all';
+  const sort = String(filters.sort || 'updated_newest');
   const likeSearch = `%${search}%`;
+  const requestCounts = getShownVideoRequestCounts(householdId);
   const params = {
     householdId,
     search: likeSearch
@@ -265,7 +342,8 @@ function getDecisionHistory(householdId, filters = {}) {
           .all(params)
           .map((video) => ({
             ...video,
-            labels: parseLabels(video.labels_json)
+            labels: parseLabels(video.labels_json),
+            request_count: requestCounts.get(video.video_id) || 0
           }));
 
   const channels =
@@ -296,14 +374,40 @@ function getDecisionHistory(householdId, filters = {}) {
           )
           .all(params);
 
+  const sortedVideos = sortDecisionRows(videos, sort);
+  const sortedChannels = sortDecisionRows(channels, sort);
+
   return {
     filters: {
       search,
-      kind
+      kind,
+      sort
     },
-    videos,
-    channels
+    videos: sortedVideos,
+    channels: sortedChannels
   };
+}
+
+function sortDecisionRows(rows, sort) {
+  const sorted = [...rows];
+
+  sorted.sort((a, b) => {
+    if (sort === 'updated_oldest') {
+      return String(a.updated_at || '').localeCompare(String(b.updated_at || ''));
+    }
+
+    if (sort === 'title') {
+      return String(a.title || '').localeCompare(String(b.title || ''));
+    }
+
+    if (sort === 'requests') {
+      return (b.request_count || 0) - (a.request_count || 0) || String(b.updated_at || '').localeCompare(String(a.updated_at || ''));
+    }
+
+    return String(b.updated_at || '').localeCompare(String(a.updated_at || ''));
+  });
+
+  return sorted;
 }
 
 module.exports = {

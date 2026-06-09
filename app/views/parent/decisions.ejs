@@ -21,6 +21,15 @@
         <option value="channel" <%= history.filters.kind === 'channel' ? 'selected' : '' %>>Channels only</option>
       </select>
     </label>
+    <label>
+      <span>Sort</span>
+      <select name="sort">
+        <option value="updated_newest" <%= history.filters.sort === 'updated_newest' ? 'selected' : '' %>>Decision date, newest</option>
+        <option value="updated_oldest" <%= history.filters.sort === 'updated_oldest' ? 'selected' : '' %>>Decision date, oldest</option>
+        <option value="requests" <%= history.filters.sort === 'requests' ? 'selected' : '' %>>Most requested</option>
+        <option value="title" <%= history.filters.sort === 'title' ? 'selected' : '' %>>Title</option>
+      </select>
+    </label>
     <button class="secondary-button small-button" type="submit">Filter</button>
   </form>
 
@@ -44,6 +53,7 @@
             <form class="decision-form compact-decision-form" action="/parent/decisions/videos/<%= video.video_id %>" method="post" data-async-decision>
               <input type="hidden" name="kind" value="<%= history.filters.kind %>">
               <input type="hidden" name="search" value="<%= history.filters.search %>">
+              <input type="hidden" name="sort" value="<%= history.filters.sort %>">
               <label>
                 <span>Decision</span>
                 <select name="decision">
@@ -79,6 +89,7 @@
             <form class="decision-form compact-decision-form" action="/parent/decisions/channels/<%= channel.channel_id %>" method="post" data-async-decision>
               <input type="hidden" name="kind" value="<%= history.filters.kind %>">
               <input type="hidden" name="search" value="<%= history.filters.search %>">
+              <input type="hidden" name="sort" value="<%= history.filters.sort %>">
               <label>
                 <span>Decision</span>
                 <select name="decision">

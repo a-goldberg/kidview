@@ -28,7 +28,32 @@
         <option value="channel_blocked" <%= reviewQueue.filters.status === 'channel_blocked' ? 'selected' : '' %>>Channel blocked</option>
       </select>
     </label>
+    <label>
+      <span>Sort</span>
+      <select name="sort">
+        <option value="status" <%= reviewQueue.filters.sort === 'status' ? 'selected' : '' %>>Status priority</option>
+        <option value="date_newest" <%= reviewQueue.filters.sort === 'date_newest' ? 'selected' : '' %>>Date added, newest</option>
+        <option value="date_oldest" <%= reviewQueue.filters.sort === 'date_oldest' ? 'selected' : '' %>>Date added, oldest</option>
+        <option value="requests" <%= reviewQueue.filters.sort === 'requests' ? 'selected' : '' %>>Most requested</option>
+        <option value="confidence_low" <%= reviewQueue.filters.sort === 'confidence_low' ? 'selected' : '' %>>Lowest confidence</option>
+        <option value="risk" <%= reviewQueue.filters.sort === 'risk' ? 'selected' : '' %>>Most risk tags</option>
+      </select>
+    </label>
     <button class="secondary-button small-button" type="submit">Filter</button>
+  </form>
+
+  <% if (reviewQueue.bulkMessage) { %>
+    <p class="decision-status" data-state="saved"><%= reviewQueue.bulkMessage %></p>
+  <% } %>
+
+  <form class="bulk-action-bar" action="/parent/reviews/bulk" method="post">
+    <input type="hidden" name="search" value="<%= reviewQueue.filters.search %>">
+    <input type="hidden" name="status" value="<%= reviewQueue.filters.status %>">
+    <input type="hidden" name="sort" value="<%= reviewQueue.filters.sort %>">
+    <span><strong><%= reviewQueue.videos.length %></strong> visible videos</span>
+    <button class="primary-button small-button" type="submit" name="action" value="approve_all">Approve all</button>
+    <button class="danger-button small-button" type="submit" name="action" value="block_all">Block all</button>
+    <button class="secondary-button small-button" type="submit" name="action" value="delete_all" data-confirm="Delete all visible review videos that do not have parent decisions?">Delete all</button>
   </form>
 
   <section class="review-layout">
@@ -78,7 +103,7 @@
             </details>
           </div>
 
-          <form class="decision-form" action="/parent/reviews/videos/<%= video.id %>/decision" method="post" data-async-decision data-remove-on-success="true">
+          <form class="decision-form review-decision-form" action="/parent/reviews/videos/<%= video.id %>/decision" method="post" data-async-decision data-remove-on-success="true">
             <label>
               <span>Parent note</span>
               <input name="reason" value="<%= video.video_decision_reason || video.review_reason || video.parent_explanation || '' %>">
@@ -98,6 +123,14 @@
     <aside class="panel">
       <h2>Channels <span class="count-pill"><%= reviewQueue.channels.length %></span></h2>
       <p class="muted">A channel decision applies to future videos unless a video-specific decision overrides it.</p>
+      <% const unreviewedChannelCount = reviewQueue.channels.filter((channel) => !channel.decision).length; %>
+      <form class="channel-cleanup-form" action="/parent/reviews/bulk" method="post">
+        <input type="hidden" name="search" value="<%= reviewQueue.filters.search %>">
+        <input type="hidden" name="status" value="<%= reviewQueue.filters.status %>">
+        <input type="hidden" name="sort" value="<%= reviewQueue.filters.sort %>">
+        <span><strong><%= unreviewedChannelCount %></strong> unreviewed</span>
+        <button class="secondary-button small-button" type="submit" name="action" value="delete_channels" data-confirm="Delete all visible unreviewed channels and their undecided review videos?" <%= unreviewedChannelCount ? '' : 'disabled' %>>Delete unreviewed channels</button>
+      </form>
       <div class="channel-decision-list">
         <% reviewQueue.channels.forEach((channel) => { %>
           <form class="channel-form" action="/parent/reviews/channels/<%= channel.id %>/decision" method="post" data-async-decision>

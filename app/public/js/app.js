@@ -78,3 +78,15 @@ document.addEventListener('submit', async (event) => {
     });
   }
 });
+
+document.addEventListener('click', (event) => {
+  const button = event.target.closest('button[data-confirm]');
+
+  if (!button) {
+    return;
+  }
+
+  if (!window.confirm(button.dataset.confirm)) {
+    event.preventDefault();
+  }
+});
