@@ -164,6 +164,50 @@ The rule layer can auto-allow probably-safe educational/source-backed videos, bu
 
 In development mode, the server logs how many YouTube candidates were returned, hard rejected, auto-allowed, sent to review, blocked/unknown, and shown to the child.
 
+## Rule-Based Moderation Scoring
+
+KidView currently uses `rule-based-v1` in `app/services/moderationService.js`. It is deterministic and intentionally inspectable. It does not call OpenAI, fetch transcripts, use thumbnails, or store raw YouTube responses.
+
+Moderation runs in this order:
+
+1. Hard filters run first: Shorts, livestreams/livestream-originated videos, and blocked channels are blocked before scoring.
+2. Parent video decisions override automated decisions unless a hard filter applies.
+3. Channel decisions apply next: `review_first` forces review, `blocked` blocks, and `approved` becomes a strong positive scoring signal.
+4. Stored automated moderation reviews are reused when no newer channel decision changes the context.
+5. Unknown videos are scored by deterministic rules.
+
+When a parent changes a channel decision, KidView re-scores all known videos for that channel so stale automated reviews can reflect the new household context.
+
+Scoring starts at `50`, then adjusts up or down:
+
+- `+10` safe category terms, such as science, nature, animals, art, rockets, or behind-the-scenes.
+- `+12` educational terms, such as explained, tutorial, lesson, facts, beginner, math, or history.
+- `+8` clear child-friendly intent, such as for kids, simple, easy, lesson, tutorial, or facts.
+- `+12` official/source-backed channel terms, such as official, BBC, NASA, PBS, museum, university, studio, or Pixar.
+- `+20` household-approved channel.
+- `+6` reasonable duration, currently 2 to 15 minutes.
+- View count signal: `+10` at 1,000,000+, `+6` at 100,000+, `+2` at 10,000+.
+- Low view count from unknown channels is negative: `-5` at 1,000 to 9,999 views, `-15` below 1,000 views.
+- `-18` risky or ambiguous terms, such as scary, secrets, drama, prank, challenge, unboxing, shopping, gaming, or Minecraft.
+- `-40` severe risk terms, such as self-harm, sexual content, gore, weapons, poison, dangerous stunts, rooftops, or skyscrapers.
+- `-20` clickbait title patterns.
+- `-8` creator-style channel name patterns.
+- `-14` very long videos, currently over 30 minutes.
+- Missing description or publication date also subtracts points.
+
+The confidence score is the final score divided by `100`, clamped between `0.05` and `0.99`. For example, a final score of `78` becomes confidence `0.78`.
+
+Decision thresholds:
+
+- Severe risk flag: `block`.
+- Approved channel with no clickbait and no risky/ambiguous topic: `allow`.
+- Score `78+` with no risk tags: `allow`.
+- Score `70+` without clickbait: `allow_limited`.
+- Score `45+`: `review`.
+- Anything lower: `unknown`.
+
+Child search results currently include only `allow` decisions. `allow_limited`, `review`, `block`, and `unknown` stay parent-facing.
+
 Useful searches to try with the YouTube source:
 
 - `otter facts for kids` should usually auto-allow clear educational results from reputable channels.
