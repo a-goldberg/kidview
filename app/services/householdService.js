@@ -517,6 +517,8 @@ function getSearchAuditDetail(householdId, searchEventId) {
     .prepare(
       `SELECT
         search_event_candidates.*,
+        videos.duration_seconds,
+        videos.primary_category,
         videos.external_id AS video_external_id,
         channels.external_id AS channel_external_id
        FROM search_event_candidates
@@ -534,8 +536,16 @@ function getSearchAuditDetail(householdId, searchEventId) {
       ...candidate,
       content_tags: parseLabels(candidate.content_tags_json),
       risk_tags: parseLabels(candidate.risk_tags_json),
-      quality_tags: parseLabels(candidate.quality_tags_json)
+      quality_tags: parseLabels(candidate.quality_tags_json),
+      review_link: candidate.video_id
+        ? `/parent/reviews?search=${encodeURIComponent(candidate.title || '')}`
+        : null,
+      decision_link: candidate.video_id || candidate.channel_id
+        ? `/parent/decisions?search=${encodeURIComponent(candidate.title || candidate.channel_title || '')}`
+        : null
     }));
+
+  const groups = groupSearchAuditCandidates(candidates);
 
   return {
     event: {
@@ -543,8 +553,79 @@ function getSearchAuditDetail(householdId, searchEventId) {
       source_mode: event.source_mode || 'unknown',
       hidden_count: Math.max(0, Number(event.source_candidate_count || 0) - Number(event.shown_to_child_count || 0))
     },
-    candidates
+    candidates,
+    groups
   };
+}
+
+function groupSearchAuditCandidates(candidates) {
+  const sections = [
+    {
+      key: 'shown',
+      title: 'Shown to child',
+      candidates: []
+    },
+    {
+      key: 'review',
+      title: 'Pending parent review / parent-actionable',
+      candidates: []
+    },
+    {
+      key: 'hard_block',
+      title: 'Hidden by hard block',
+      candidates: []
+    },
+    {
+      key: 'parent_block',
+      title: 'Hidden by parent block decision',
+      candidates: []
+    },
+    {
+      key: 'unknown',
+      title: 'Hidden because unknown / low confidence / not child-visible',
+      candidates: []
+    },
+    {
+      key: 'allow_limited',
+      title: 'Hidden because allow_limited',
+      candidates: []
+    }
+  ];
+  const sectionByKey = new Map(sections.map((section) => [section.key, section]));
+
+  candidates.forEach((candidate) => {
+    sectionByKey.get(searchAuditGroupKey(candidate)).candidates.push(candidate);
+  });
+
+  return sections;
+}
+
+function searchAuditGroupKey(candidate) {
+  if (candidate.shown_to_child) {
+    return 'shown';
+  }
+
+  if (candidate.parent_decision_affected && candidate.final_decision === 'block') {
+    return 'parent_block';
+  }
+
+  if (candidate.hard_block_reason) {
+    return 'hard_block';
+  }
+
+  if (candidate.final_decision === 'allow_limited') {
+    return 'allow_limited';
+  }
+
+  if (
+    candidate.review_queue_state === 'created_pending' ||
+    candidate.review_queue_state === 'matched_pending' ||
+    candidate.final_decision === 'review'
+  ) {
+    return 'review';
+  }
+
+  return 'unknown';
 }
 
 function sortDecisionRows(rows, sort) {

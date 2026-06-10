@@ -33,41 +33,71 @@
     </div>
 
     <% if (audit.candidates.length) { %>
-      <% audit.candidates.forEach((candidate) => { %>
-        <article class="history-row search-audit-row">
-          <div class="history-main">
-            <p class="category">
-              #<%= candidate.source_rank || '?' %> · <%= candidate.final_decision %> · <%= candidate.shown_to_child ? 'shown' : 'hidden' %>
-            </p>
-            <h3><%= candidate.title %></h3>
-            <p class="muted"><%= candidate.channel_title || 'Unknown channel' %></p>
-            <p class="review-reason compact-note"><%= candidate.visibility_reason %></p>
-            <% if (candidate.hard_block_reason) { %>
-              <p class="muted"><strong>Hard block:</strong> <%= candidate.hard_block_reason %></p>
-            <% } %>
-            <% if (candidate.content_tags.length || candidate.quality_tags.length || candidate.risk_tags.length) { %>
-              <ul class="label-list compact-labels">
-                <% candidate.content_tags.forEach((tag) => { %>
-                  <li><%= tag %></li>
-                <% }) %>
-                <% candidate.quality_tags.forEach((tag) => { %>
-                  <li><%= tag %></li>
-                <% }) %>
-                <% candidate.risk_tags.forEach((tag) => { %>
-                  <li><%= tag %></li>
-                <% }) %>
-              </ul>
-            <% } %>
-          </div>
-          <div class="search-audit-metrics">
-            <span><strong><%= candidate.moderation_source || 'unknown' %></strong> source</span>
-            <span><strong><%= candidate.parent_decision_affected ? 'yes' : 'no' %></strong> parent override</span>
-            <span><strong><%= candidate.review_queue_state || 'none' %></strong> review queue</span>
-            <% if (candidate.review_queue_reason_code) { %>
-              <span><strong><%= candidate.review_queue_reason_code %></strong> queue reason</span>
-            <% } %>
-          </div>
-        </article>
+      <% audit.groups.forEach((group) => { %>
+        <div class="decision-section">
+          <h2><%= group.title %> <span class="count-pill"><%= group.candidates.length %></span></h2>
+          <% if (!group.candidates.length) { %>
+            <article class="panel">
+              <p class="muted">No candidates in this group.</p>
+            </article>
+          <% } %>
+
+          <% group.candidates.forEach((candidate) => { %>
+            <article class="history-row search-audit-row">
+              <div class="history-main">
+                <p class="category">
+                  #<%= candidate.source_rank || '?' %> · <%= candidate.final_decision %> · <%= candidate.shown_to_child ? 'shown' : 'hidden' %>
+                </p>
+                <h3><%= candidate.title %></h3>
+                <p class="muted">
+                  <%= candidate.channel_title || 'Unknown channel' %>
+                  <% if (candidate.primary_category || candidate.duration_seconds) { %>
+                    · <%= candidate.primary_category || 'General' %>
+                    <% if (candidate.duration_seconds) { %>
+                      · <%= Math.max(1, Math.round(candidate.duration_seconds / 60)) %> min
+                    <% } %>
+                  <% } %>
+                </p>
+                <p class="review-reason compact-note"><%= candidate.visibility_reason %></p>
+                <% if (candidate.hard_block_reason) { %>
+                  <p class="muted"><strong>Hard block:</strong> <%= candidate.hard_block_reason %></p>
+                <% } %>
+                <% if (candidate.parent_decision_affected) { %>
+                  <p class="muted"><strong>Parent decision involved:</strong> <%= candidate.parent_decision_source || 'household decision' %></p>
+                <% } %>
+                <% if (candidate.content_tags.length || candidate.quality_tags.length || candidate.risk_tags.length) { %>
+                  <ul class="label-list compact-labels">
+                    <% candidate.content_tags.forEach((tag) => { %>
+                      <li><%= tag %></li>
+                    <% }) %>
+                    <% candidate.quality_tags.forEach((tag) => { %>
+                      <li><%= tag %></li>
+                    <% }) %>
+                    <% candidate.risk_tags.forEach((tag) => { %>
+                      <li><%= tag %></li>
+                    <% }) %>
+                  </ul>
+                <% } %>
+              </div>
+              <div class="search-audit-metrics">
+                <span><strong><%= candidate.moderation_source || 'unknown' %></strong> source</span>
+                <span><strong><%= candidate.parent_decision_affected ? 'yes' : 'no' %></strong> parent override</span>
+                <span><strong><%= candidate.review_queue_state || 'none' %></strong> review queue</span>
+                <% if (candidate.review_queue_reason_code) { %>
+                  <span><strong><%= candidate.review_queue_reason_code %></strong> queue reason</span>
+                <% } %>
+                <div class="button-row">
+                  <% if (candidate.review_link && (candidate.review_queue_state === 'created_pending' || candidate.review_queue_state === 'matched_pending')) { %>
+                    <a class="secondary-button small-button" href="<%= candidate.review_link %>">Review item</a>
+                  <% } %>
+                  <% if (candidate.decision_link) { %>
+                    <a class="secondary-button small-button" href="<%= candidate.decision_link %>">Decision history</a>
+                  <% } %>
+                </div>
+              </div>
+            </article>
+          <% }) %>
+        </div>
       <% }) %>
     <% } else { %>
       <article class="panel">
