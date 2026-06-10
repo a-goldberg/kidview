@@ -468,7 +468,7 @@ function writeModerationReview({ householdId, candidate, result }) {
 }
 
 function resolvePendingReviewItem({ householdId, candidate, reasonCode }) {
-  db.prepare(
+  const result = db.prepare(
     `UPDATE household_review_items
      SET
       status = 'expired',
@@ -479,26 +479,37 @@ function resolvePendingReviewItem({ householdId, candidate, reasonCode }) {
       AND video_id = ?
       AND status = 'pending'`,
   ).run(reasonCode, householdId, candidate.videoId);
+
+  return {
+    state: result.changes ? "resolved" : "none",
+    reasonCode,
+  };
 }
 
 function ensurePendingReviewItem({ householdId, childProfileId, candidate, result }) {
   if (result.decision === "allow") {
-    resolvePendingReviewItem({
+    return resolvePendingReviewItem({
       householdId,
       candidate,
       reasonCode: "auto_allowed_by_moderation",
     });
-    return;
   }
 
   if (!REVIEW_QUEUE_DECISIONS.has(result.decision)) {
-    resolvePendingReviewItem({
+    return resolvePendingReviewItem({
       householdId,
       candidate,
       reasonCode: `not_review_queue:${result.decision || "unknown"}`,
     });
-    return;
   }
+
+  const existingPending = db.prepare(
+    `SELECT id
+     FROM household_review_items
+     WHERE household_id = ?
+      AND video_id = ?
+      AND status = 'pending'`,
+  ).get(householdId, candidate.videoId);
 
   db.prepare(
     `INSERT INTO household_review_items (
@@ -519,6 +530,11 @@ function ensurePendingReviewItem({ householdId, childProfileId, candidate, resul
     candidate.videoId,
     result.decision,
   );
+
+  return {
+    state: existingPending ? "matched_pending" : "created_pending",
+    reasonCode: result.decision,
+  };
 }
 
 function resolveDecision({ householdId, childProfileId, candidate, maps }) {
@@ -536,20 +552,23 @@ function resolveDecision({ householdId, childProfileId, candidate, maps }) {
       parentExplanation: hardBlocked.reason,
     };
     writeModerationReview({ householdId, candidate, result });
-    resolvePendingReviewItem({
+    const reviewQueue = resolvePendingReviewItem({
       householdId,
       candidate,
       reasonCode: `hard_block:${hardBlocked.riskTags[0] || "blocked"}`,
     });
     return {
       ...result,
+      parentDecisionSource: hardBlocked.riskTags.includes("blocked-channel") ? "channel" : null,
+      parentDecisionAffected: hardBlocked.riskTags.includes("blocked-channel"),
+      reviewQueue,
       source: "hard_filter",
     };
   }
 
   const videoDecision = maps.videoDecisions.get(candidate.videoId);
   if (videoDecision) {
-    resolvePendingReviewItem({
+    const reviewQueue = resolvePendingReviewItem({
       householdId,
       candidate,
       reasonCode: `durable_video_decision:${videoDecision.decision}`,
@@ -564,6 +583,9 @@ function resolveDecision({ householdId, childProfileId, candidate, maps }) {
       childExplanation: candidate.childExplanation,
       parentExplanation:
         videoDecision.parent_facing_reason || candidate.parentExplanation || "",
+      parentDecisionSource: "video",
+      parentDecisionAffected: true,
+      reviewQueue,
       source: "parent_video_decision",
     };
   }
@@ -582,9 +604,12 @@ function resolveDecision({ householdId, childProfileId, candidate, maps }) {
         "Household requires review before this channel appears.",
     };
     writeModerationReview({ householdId, candidate, result });
-    ensurePendingReviewItem({ householdId, childProfileId, candidate, result });
+    const reviewQueue = ensurePendingReviewItem({ householdId, childProfileId, candidate, result });
     return {
       ...result,
+      parentDecisionSource: "channel",
+      parentDecisionAffected: true,
+      reviewQueue,
       source: "parent_channel_decision",
     };
   }
@@ -600,13 +625,18 @@ function resolveDecision({ householdId, childProfileId, candidate, maps }) {
   const review = maps.reviews.get(candidate.videoId);
   if (review && !channelDecision) {
     const result = resultFromStoredReview(candidate, review);
-    ensurePendingReviewItem({ householdId, childProfileId, candidate, result });
-    return result;
+    const reviewQueue = ensurePendingReviewItem({ householdId, childProfileId, candidate, result });
+    return {
+      ...result,
+      parentDecisionSource: null,
+      parentDecisionAffected: false,
+      reviewQueue,
+    };
   }
 
   const automated = scoreCandidate(candidate, channelDecision);
   writeModerationReview({ householdId, candidate, result: automated });
-  ensurePendingReviewItem({
+  const reviewQueue = ensurePendingReviewItem({
     householdId,
     childProfileId,
     candidate,
@@ -615,6 +645,9 @@ function resolveDecision({ householdId, childProfileId, candidate, maps }) {
 
   return {
     ...automated,
+    parentDecisionSource: channelDecision && channelDecision.decision === "approved" ? "channel" : null,
+    parentDecisionAffected: Boolean(channelDecision && channelDecision.decision === "approved"),
+    reviewQueue,
     source: "rule_based",
   };
 }
@@ -652,18 +685,65 @@ function updateDiagnostics(diagnostics, decisionResult) {
   }
 
   if (decisionResult.decision === "allow") {
+    diagnostics.allowed += 1;
     diagnostics.autoAllowed += decisionResult.source === "rule_based" ? 1 : 0;
-  } else if (
-    decisionResult.decision === "review" ||
-    decisionResult.decision === "allow_limited"
-  ) {
+  } else if (decisionResult.decision === "allow_limited") {
+    diagnostics.allowLimited += 1;
     diagnostics.sentToReview += 1;
-  } else if (
-    decisionResult.decision === "block" ||
-    decisionResult.decision === "unknown"
-  ) {
+  } else if (decisionResult.decision === "review") {
+    diagnostics.review += 1;
+    diagnostics.sentToReview += 1;
+  } else if (decisionResult.decision === "block") {
+    diagnostics.blocked += 1;
+    diagnostics.blockedOrUnknown += 1;
+  } else if (decisionResult.decision === "unknown") {
+    diagnostics.unknown += 1;
     diagnostics.blockedOrUnknown += 1;
   }
+}
+
+function visibilityReasonFor({ decision, shownToChild }) {
+  if (shownToChild) {
+    return "Shown because moderation resolved this candidate as allowed within the child result limit.";
+  }
+
+  const reasons = {
+    allow: "Hidden because the child result limit had already been reached.",
+    allow_limited: "Hidden because allow_limited requires parent review before child display.",
+    review: "Hidden because this candidate requires parent review before child display.",
+    block: "Hidden because this candidate is blocked for child search.",
+    unknown: "Hidden because KidView did not have enough confidence to show it.",
+  };
+
+  return reasons[decision] || "Hidden because it was not eligible for child display.";
+}
+
+function auditCandidateFor(candidate, decisionResult, shownToChild) {
+  return {
+    videoId: candidate.videoId || null,
+    channelId: candidate.channelId || null,
+    sourceRank: candidate.sourceRank || null,
+    title: candidate.title,
+    channelTitle: candidate.channelTitle || null,
+    finalDecision: decisionResult.decision || "unknown",
+    shownToChild,
+    visibilityReason: visibilityReasonFor({
+      decision: decisionResult.decision,
+      shownToChild,
+    }),
+    hardBlockReason:
+      decisionResult.source === "hard_filter"
+        ? decisionResult.parentExplanation || decisionResult.reason || null
+        : null,
+    contentTags: decisionResult.contentTags || [],
+    riskTags: decisionResult.riskTags || [],
+    qualityTags: decisionResult.qualityTags || [],
+    moderationSource: decisionResult.source || null,
+    parentDecisionSource: decisionResult.parentDecisionSource || null,
+    parentDecisionAffected: Boolean(decisionResult.parentDecisionAffected),
+    reviewQueueState: decisionResult.reviewQueue && decisionResult.reviewQueue.state,
+    reviewQueueReasonCode: decisionResult.reviewQueue && decisionResult.reviewQueue.reasonCode,
+  };
 }
 
 function moderateCandidatesWithDiagnostics({
@@ -677,12 +757,18 @@ function moderateCandidatesWithDiagnostics({
     autoAllowed: 0,
     sentToReview: 0,
     blockedOrUnknown: 0,
+    allowed: 0,
+    allowLimited: 0,
+    review: 0,
+    blocked: 0,
+    unknown: 0,
   };
 
   if (!householdId || !candidates.length) {
     return {
       results: [],
       diagnostics,
+      auditCandidates: [],
     };
   }
 
@@ -695,14 +781,28 @@ function moderateCandidatesWithDiagnostics({
       maps,
     });
     updateDiagnostics(diagnostics, decisionResult);
-    return normalizeCandidate(candidate, decisionResult);
+    return {
+      candidate,
+      decisionResult,
+      result: normalizeCandidate(candidate, decisionResult),
+    };
   });
+  const results = normalized
+    .map((entry) => entry.result)
+    .filter((result) => result.decision === "allow")
+    .slice(0, limit);
+  const shownVideoIds = new Set(results.map((result) => result.videoId));
 
   return {
-    results: normalized
-      .filter((result) => result.decision === "allow")
-      .slice(0, limit),
+    results,
     diagnostics,
+    auditCandidates: normalized.map((entry) =>
+      auditCandidateFor(
+        entry.candidate,
+        entry.decisionResult,
+        shownVideoIds.has(entry.candidate.videoId),
+      ),
+    ),
   };
 }
 

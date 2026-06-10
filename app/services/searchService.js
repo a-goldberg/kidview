@@ -184,29 +184,213 @@ function upsertSourceCandidates(candidates) {
           Number(candidate.viewCount || 0)
         );
 
-        return selectCandidate.get(video.id);
+        return {
+          ...selectCandidate.get(video.id),
+          sourceRank: candidate.sourceRank || null
+        };
       })
   )();
 }
 
+function sourceRejectedAuditCandidate(candidate) {
+  return {
+    videoId: null,
+    channelId: null,
+    sourceRank: candidate.sourceRank || null,
+    title: candidate.title || 'Untitled video',
+    channelTitle: candidate.channelTitle || null,
+    finalDecision: 'block',
+    shownToChild: false,
+    visibilityReason: 'Hidden because the source candidate could not be safely embedded in KidView.',
+    hardBlockReason: 'Filtered because non-embeddable videos are not allowed for child search.',
+    contentTags: [],
+    riskTags: ['not-embeddable'],
+    qualityTags: [],
+    moderationSource: 'source_filter',
+    parentDecisionSource: null,
+    parentDecisionAffected: false,
+    reviewQueueState: 'none',
+    reviewQueueReasonCode: 'source_filter:not_embeddable'
+  };
+}
+
 async function getSourceCandidates(query) {
   if (config.videoSource === 'youtube') {
-    const youtubeCandidates = await youtubeSourceService.searchCandidates(query);
+    const youtubeCandidates = (await youtubeSourceService.searchCandidates(query)).map(
+      (candidate, index) => ({
+        ...candidate,
+        sourceRank: index + 1
+      })
+    );
+    const sourceRejectedCandidates = youtubeCandidates
+      .filter((candidate) => !candidate.embeddable)
+      .map(sourceRejectedAuditCandidate);
+
     return {
       sourceName: 'youtube',
       sourceCount: youtubeCandidates.length,
-      sourceHardRejected: youtubeCandidates.filter((candidate) => !candidate.embeddable).length,
+      sourceHardRejected: sourceRejectedCandidates.length,
+      sourceRejectedCandidates,
       candidates: upsertSourceCandidates(youtubeCandidates)
     };
   }
 
-  const candidates = mockVideoSourceService.searchCandidates(query);
+  const candidates = mockVideoSourceService.searchCandidates(query).map((candidate, index) => ({
+    ...candidate,
+    sourceRank: index + 1
+  }));
+
   return {
     sourceName: 'mock',
     sourceCount: candidates.length,
     sourceHardRejected: 0,
+    sourceRejectedCandidates: [],
     candidates
   };
+}
+
+function writeSearchAudit({
+  householdId,
+  childProfileId,
+  query,
+  sourceResponse,
+  moderation,
+  results
+}) {
+  const diagnostics = moderation.diagnostics;
+  const shownVideoIds = results.map((result) => result.videoId);
+  const auditCandidates = [
+    ...(sourceResponse.sourceRejectedCandidates || []),
+    ...(moderation.auditCandidates || [])
+  ];
+  const hardBlockedCount = sourceResponse.sourceHardRejected + diagnostics.hardRejected;
+  const auditSummary = {
+    sourceMode: sourceResponse.sourceName,
+    sourceCandidates: sourceResponse.sourceCount,
+    persistedCandidates: sourceResponse.candidates.length,
+    sourceHardRejected: sourceResponse.sourceHardRejected,
+    moderationHardRejected: diagnostics.hardRejected
+  };
+
+  const insertSearchEvent = db.prepare(
+    `INSERT INTO search_events (
+      household_id,
+      child_profile_id,
+      query,
+      original_query,
+      clarified_query,
+      query_intent,
+      clarification_options_json,
+      selected_clarification,
+      shown_video_ids_json,
+      result_count,
+      source_mode,
+      source_candidate_count,
+      hard_blocked_count,
+      sent_to_review_count,
+      allowed_count,
+      allow_limited_count,
+      unknown_count,
+      blocked_count,
+      shown_to_child_count,
+      audit_summary_json
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  );
+  const insertCandidate = db.prepare(
+    `INSERT INTO search_event_candidates (
+      search_event_id,
+      household_id,
+      child_profile_id,
+      video_id,
+      channel_id,
+      source_rank,
+      title,
+      channel_title,
+      final_decision,
+      shown_to_child,
+      visibility_reason,
+      hard_block_reason,
+      content_tags_json,
+      risk_tags_json,
+      quality_tags_json,
+      moderation_source,
+      parent_decision_source,
+      parent_decision_affected,
+      review_queue_state,
+      review_queue_reason_code
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  );
+  const attachReviewItem = db.prepare(
+    `UPDATE household_review_items
+     SET
+      search_event_id = COALESCE(search_event_id, ?),
+      updated_at = CURRENT_TIMESTAMP
+     WHERE household_id = ?
+      AND video_id = ?
+      AND status = 'pending'`
+  );
+
+  return db.transaction(() => {
+    const searchEvent = insertSearchEvent.run(
+      householdId,
+      childProfileId || null,
+      query,
+      query,
+      query,
+      `${sourceResponse.sourceName}_discovery`,
+      JSON.stringify([]),
+      null,
+      JSON.stringify(shownVideoIds),
+      results.length,
+      sourceResponse.sourceName,
+      sourceResponse.sourceCount,
+      hardBlockedCount,
+      diagnostics.sentToReview,
+      diagnostics.allowed,
+      diagnostics.allowLimited,
+      diagnostics.unknown,
+      diagnostics.blocked,
+      results.length,
+      JSON.stringify(auditSummary)
+    );
+
+    auditCandidates.forEach((candidate) => {
+      insertCandidate.run(
+        searchEvent.lastInsertRowid,
+        householdId,
+        childProfileId || null,
+        candidate.videoId || null,
+        candidate.channelId || null,
+        candidate.sourceRank || null,
+        candidate.title || 'Untitled video',
+        candidate.channelTitle || null,
+        candidate.finalDecision,
+        candidate.shownToChild ? 1 : 0,
+        candidate.visibilityReason,
+        candidate.hardBlockReason || null,
+        JSON.stringify(candidate.contentTags || []),
+        JSON.stringify(candidate.riskTags || []),
+        JSON.stringify(candidate.qualityTags || []),
+        candidate.moderationSource || null,
+        candidate.parentDecisionSource || null,
+        candidate.parentDecisionAffected ? 1 : 0,
+        candidate.reviewQueueState || null,
+        candidate.reviewQueueReasonCode || null
+      );
+
+      if (
+        candidate.videoId &&
+        (candidate.reviewQueueState === 'created_pending' ||
+          candidate.reviewQueueState === 'matched_pending')
+      ) {
+        attachReviewItem.run(searchEvent.lastInsertRowid, householdId, candidate.videoId);
+      }
+    });
+
+    return searchEvent;
+  })();
 }
 
 async function search({ query, householdId, childProfileId }) {
@@ -230,33 +414,15 @@ async function search({ query, householdId, childProfileId }) {
   });
   const results = moderation.results;
 
-  // Search events intentionally store only query metadata, not transcript text.
-  const searchEvent = db.prepare(
-    `INSERT INTO search_events (
-      household_id,
-      child_profile_id,
-      query,
-      original_query,
-      clarified_query,
-      query_intent,
-      clarification_options_json,
-      selected_clarification,
-      shown_video_ids_json,
-      result_count
-    )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(
+  // Search audit intentionally stores compact metadata, not raw API payloads or transcript text.
+  const searchEvent = writeSearchAudit({
     householdId,
-    childProfileId || null,
-    safeQuery,
-    safeQuery,
-    safeQuery,
-    `${sourceResponse.sourceName}_discovery`,
-    JSON.stringify([]),
-    null,
-    JSON.stringify(results.map((result) => result.videoId)),
-    results.length
-  );
+    childProfileId,
+    query: safeQuery,
+    sourceResponse,
+    moderation,
+    results
+  });
 
   if (!config.isProduction && sourceResponse.sourceName === 'youtube') {
     const hardRejected = sourceResponse.sourceHardRejected + moderation.diagnostics.hardRejected;
