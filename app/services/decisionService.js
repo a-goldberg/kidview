@@ -62,8 +62,6 @@ function upsertVideoDecision({ householdId, videoId, parentUserId, decision, rea
        ON CONFLICT(household_id, video_id) DO UPDATE SET
         status = excluded.status,
         decision = excluded.decision,
-        parent_facing_reason = excluded.parent_facing_reason,
-        parent_explanation = excluded.parent_explanation,
         reviewed_by_parent_user_id = excluded.reviewed_by_parent_user_id,
         reviewed_at = CURRENT_TIMESTAMP`
     ).run(
@@ -71,8 +69,8 @@ function upsertVideoDecision({ householdId, videoId, parentUserId, decision, rea
       videoId,
       videoDecisionToReviewStatus(normalizedDecision),
       videoDecisionToReviewStatus(normalizedDecision),
-      parentReason,
-      parentReason,
+      null,
+      null,
       parentUserId
     );
 

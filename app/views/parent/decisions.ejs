@@ -43,7 +43,10 @@
               <p class="category"><%= video.primary_category %> · <%= Math.round(video.duration_seconds / 60) %> min</p>
               <h3><%= video.title %></h3>
               <p class="muted"><%= video.channel_title %></p>
-              <p class="review-reason compact-note"><%= video.parent_facing_reason || 'No parent note.' %></p>
+              <% if (video.system_explanation) { %>
+                <p class="review-reason compact-note"><strong>Moderation explanation:</strong> <%= video.system_explanation %></p>
+              <% } %>
+              <p class="muted compact-note"><strong>Parent note:</strong> <%= video.parent_facing_reason || 'No parent note.' %></p>
               <ul class="label-list compact-labels">
                 <% video.labels.forEach((label) => { %>
                   <li><%= label %></li>
@@ -64,8 +67,8 @@
                 </select>
               </label>
               <label>
-                <span>Note</span>
-                <input name="reason" value="<%= video.parent_facing_reason || '' %>">
+                <span>Parent note</span>
+                <input name="reason" value="<%= video.parent_facing_reason || '' %>" placeholder="Optional">
               </label>
               <button class="primary-button small-button" type="submit">Save</button>
               <p class="decision-status" role="status"></p>
@@ -84,7 +87,7 @@
               <p class="category"><%= channel.source %></p>
               <h3><%= channel.title %></h3>
               <p class="muted"><%= channel.external_id %></p>
-              <p class="review-reason compact-note"><%= channel.parent_facing_reason || 'No parent note.' %></p>
+              <p class="muted compact-note"><strong>Parent note:</strong> <%= channel.parent_facing_reason || 'No parent note.' %></p>
             </div>
             <form class="decision-form compact-decision-form" action="/parent/decisions/channels/<%= channel.channel_id %>" method="post" data-async-decision>
               <input type="hidden" name="kind" value="<%= history.filters.kind %>">
@@ -99,8 +102,8 @@
                 </select>
               </label>
               <label>
-                <span>Note</span>
-                <input name="reason" value="<%= channel.parent_facing_reason || '' %>">
+                <span>Parent note</span>
+                <input name="reason" value="<%= channel.parent_facing_reason || '' %>" placeholder="Optional">
               </label>
               <button class="primary-button small-button" type="submit">Save</button>
               <p class="decision-status" role="status"></p>

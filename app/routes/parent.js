@@ -120,7 +120,7 @@ router.post('/reviews/bulk', requireParent, (req, res) => {
       parentUserId: req.session.parentUser.id,
       videoIds,
       decision: 'allow',
-      reason: 'Bulk approved from parent review queue.'
+      reason: ''
     });
     message = `Approved ${count} video${count === 1 ? '' : 's'}.`;
   } else if (action === 'block_all') {
@@ -129,7 +129,7 @@ router.post('/reviews/bulk', requireParent, (req, res) => {
       parentUserId: req.session.parentUser.id,
       videoIds,
       decision: 'block',
-      reason: 'Bulk blocked from parent review queue.'
+      reason: ''
     });
     message = `Blocked ${count} video${count === 1 ? '' : 's'}.`;
   } else if (action === 'delete_all') {

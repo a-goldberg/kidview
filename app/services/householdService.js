@@ -115,6 +115,7 @@ function getReviewQueueWithFilters(householdId, filters = {}) {
         channels.title AS channel_title,
         moderation_reviews.status AS review_status,
         moderation_reviews.parent_facing_reason AS review_reason,
+        moderation_reviews.parent_explanation AS moderation_explanation,
         moderation_reviews.confidence_score AS review_confidence_score,
         moderation_reviews.content_tags_json AS content_tags_json,
         moderation_reviews.risk_tags_json AS risk_tags_json,
@@ -181,6 +182,7 @@ function getReviewQueueWithFilters(householdId, filters = {}) {
         video.channel_title,
         video.parent_explanation,
         video.review_reason,
+        video.moderation_explanation,
         video.channel_decision,
         video.queue_status,
         ...video.labels,
@@ -354,10 +356,15 @@ function getDecisionHistory(householdId, filters = {}) {
               videos.duration_seconds,
               videos.primary_category,
               videos.labels_json,
+              moderation_reviews.parent_explanation AS moderation_explanation,
+              moderation_reviews.parent_facing_reason AS moderation_reason,
               channels.title AS channel_title
             FROM household_video_decisions
             JOIN videos ON videos.id = household_video_decisions.video_id
             LEFT JOIN channels ON channels.id = videos.channel_id
+            LEFT JOIN moderation_reviews
+              ON moderation_reviews.household_id = household_video_decisions.household_id
+              AND moderation_reviews.video_id = household_video_decisions.video_id
             WHERE household_video_decisions.household_id = @householdId
               AND (
                 @search = '%%'
@@ -366,6 +373,8 @@ function getDecisionHistory(householdId, filters = {}) {
                 OR channels.title LIKE @search
                 OR household_video_decisions.decision LIKE @search
                 OR household_video_decisions.parent_facing_reason LIKE @search
+                OR moderation_reviews.parent_explanation LIKE @search
+                OR moderation_reviews.parent_facing_reason LIKE @search
               )
             ORDER BY household_video_decisions.updated_at DESC, household_video_decisions.id DESC`
           )
@@ -373,6 +382,7 @@ function getDecisionHistory(householdId, filters = {}) {
           .map((video) => ({
             ...video,
             labels: parseLabels(video.labels_json),
+            system_explanation: video.moderation_explanation || video.moderation_reason || '',
             request_count: requestCounts.get(video.video_id) || 0
           }));
 

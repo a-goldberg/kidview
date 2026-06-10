@@ -82,7 +82,7 @@
               <p><%= video.description %></p>
               <p class="muted">Rule confidence: <strong><%= Math.round((video.review_confidence_score || video.confidence_score || 0) * 100) %>%</strong></p>
               <p class="muted">Views: <strong><%= Number(video.view_count || 0).toLocaleString() %></strong></p>
-              <p class="review-reason"><%= video.review_reason || video.parent_explanation || 'No parent note yet.' %></p>
+              <p class="review-reason"><strong>Moderation explanation:</strong> <%= video.moderation_explanation || video.review_reason || video.parent_explanation || 'No moderation explanation available.' %></p>
               <% if (video.content_tags.length || video.quality_tags.length || video.risk_tags.length) { %>
                 <ul class="label-list">
                   <% video.content_tags.forEach((tag) => { %>
@@ -102,7 +102,7 @@
           <form class="decision-form review-decision-form" action="/parent/reviews/videos/<%= video.id %>/decision" method="post" data-async-decision data-remove-on-success="true">
             <label>
               <span>Parent note</span>
-              <input name="reason" value="<%= video.video_decision_reason || video.review_reason || video.parent_explanation || '' %>">
+              <input name="reason" value="<%= video.video_decision_reason || '' %>" placeholder="Optional note for this household decision">
             </label>
             <div class="button-row">
               <button class="primary-button" type="submit" name="decision" value="allow">Allow video</button>
