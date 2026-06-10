@@ -1,0 +1,63 @@
+<%- include('../partials/head', { title }) %>
+<%- include('../partials/header') %>
+
+<main class="page parent-page">
+  <section class="page-heading compact-heading">
+    <p class="eyebrow">Parent audit</p>
+    <h1>Child searches</h1>
+    <p class="muted">Recent household search outcomes and review signals.</p>
+  </section>
+
+  <form class="filter-bar" action="/parent/searches" method="get">
+    <label>
+      <span>Search queries</span>
+      <input name="search" value="<%= audit.filters.search %>" placeholder="Query text">
+    </label>
+    <label>
+      <span>Source</span>
+      <select name="source">
+        <option value="all" <%= audit.filters.source === 'all' ? 'selected' : '' %>>All sources</option>
+        <% audit.sources.forEach((source) => { %>
+          <option value="<%= source %>" <%= audit.filters.source === source ? 'selected' : '' %>><%= source %></option>
+        <% }) %>
+      </select>
+    </label>
+    <label>
+      <span>View</span>
+      <select name="sort">
+        <option value="newest" <%= audit.filters.sort === 'newest' ? 'selected' : '' %>>Newest first</option>
+        <option value="oldest" <%= audit.filters.sort === 'oldest' ? 'selected' : '' %>>Oldest first</option>
+        <option value="zero_newest" <%= audit.filters.sort === 'zero_newest' ? 'selected' : '' %>>Zero child results, newest</option>
+        <option value="zero_oldest" <%= audit.filters.sort === 'zero_oldest' ? 'selected' : '' %>>Zero child results, oldest</option>
+      </select>
+    </label>
+    <button class="secondary-button small-button" type="submit">Filter</button>
+  </form>
+
+  <section class="decision-history">
+    <% if (audit.searches.length) { %>
+      <% audit.searches.forEach((event) => { %>
+        <article class="history-row search-audit-row">
+          <div class="history-main">
+            <p class="category"><%= event.source_mode %> · <%= event.child_profile_name || 'No child profile' %></p>
+            <h3><%= event.query %></h3>
+            <p class="muted"><%= event.created_at %></p>
+          </div>
+          <div class="search-audit-metrics">
+            <span><strong><%= event.shown_to_child_count %></strong> shown</span>
+            <span><strong><%= event.sent_to_review_count %></strong> review</span>
+            <span><strong><%= event.hard_blocked_count %></strong> hard-blocked</span>
+            <span><strong><%= event.hidden_count %></strong> hidden</span>
+            <a class="secondary-button small-button" href="/parent/searches/<%= event.id %>">Details</a>
+          </div>
+        </article>
+      <% }) %>
+    <% } else { %>
+      <article class="panel">
+        <p class="muted">No matching searches found.</p>
+      </article>
+    <% } %>
+  </section>
+</main>
+
+<%- include('../partials/footer') %>

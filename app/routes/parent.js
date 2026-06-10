@@ -2,7 +2,9 @@ const express = require('express');
 const {
   getDecisionHistory,
   getParentDashboard,
-  getReviewQueue
+  getReviewQueue,
+  getSearchAuditDetail,
+  getSearchAuditList
 } = require('../services/householdService');
 const {
   bulkUpsertVideoDecisions,
@@ -61,6 +63,31 @@ router.get('/decisions', requireParent, (req, res) => {
   res.render('parent/decisions', {
     title: 'Decision History',
     history
+  });
+});
+
+router.get('/searches', requireParent, (req, res) => {
+  const audit = getSearchAuditList(req.session.parentUser.householdId, req.query);
+
+  res.render('parent/searches', {
+    title: 'Search Audit',
+    audit
+  });
+});
+
+router.get('/searches/:searchEventId', requireParent, (req, res, next) => {
+  const audit = getSearchAuditDetail(
+    req.session.parentUser.householdId,
+    Number(req.params.searchEventId)
+  );
+
+  if (!audit) {
+    return next();
+  }
+
+  return res.render('parent/search-detail', {
+    title: 'Search Details',
+    audit
   });
 });
 

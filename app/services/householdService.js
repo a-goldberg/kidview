@@ -418,6 +418,135 @@ function getDecisionHistory(householdId, filters = {}) {
   };
 }
 
+function getSearchAuditList(householdId, filters = {}) {
+  const search = String(filters.search || '').trim();
+  const source = String(filters.source || 'all');
+  const requestedSort = String(filters.sort || 'newest');
+  const sort = requestedSort === 'oldest' || requestedSort === 'zero_oldest' ? 'oldest' : 'newest';
+  const zeroResults = requestedSort === 'zero_newest' || requestedSort === 'zero_oldest';
+  const params = {
+    householdId,
+    search: `%${search}%`,
+    source
+  };
+  const where = [
+    'search_events.household_id = @householdId',
+    `(@search = '%%' OR search_events.query LIKE @search OR search_events.original_query LIKE @search)`
+  ];
+
+  if (source !== 'all') {
+    where.push('search_events.source_mode = @source');
+  }
+
+  if (zeroResults) {
+    where.push('search_events.shown_to_child_count = 0');
+  }
+
+  const order = sort === 'oldest'
+    ? 'search_events.created_at ASC, search_events.id ASC'
+    : 'search_events.created_at DESC, search_events.id DESC';
+
+  const searches = db
+    .prepare(
+      `SELECT
+        search_events.id,
+        search_events.query,
+        search_events.created_at,
+        search_events.source_mode,
+        search_events.source_candidate_count,
+        search_events.shown_to_child_count,
+        search_events.sent_to_review_count,
+        search_events.hard_blocked_count,
+        search_events.unknown_count,
+        search_events.blocked_count,
+        child_profiles.display_name AS child_profile_name
+       FROM search_events
+       LEFT JOIN child_profiles ON child_profiles.id = search_events.child_profile_id
+       WHERE ${where.join(' AND ')}
+       ORDER BY ${order}
+       LIMIT 100`
+    )
+    .all(params)
+    .map((event) => ({
+      ...event,
+      source_mode: event.source_mode || 'unknown',
+      hidden_count: Math.max(0, Number(event.source_candidate_count || 0) - Number(event.shown_to_child_count || 0))
+    }));
+
+  const sources = db
+    .prepare(
+      `SELECT DISTINCT source_mode
+       FROM search_events
+       WHERE household_id = ?
+        AND source_mode IS NOT NULL
+       ORDER BY source_mode`
+    )
+    .all(householdId)
+    .map((row) => row.source_mode);
+
+  return {
+    filters: {
+      search,
+      source,
+      sort: requestedSort,
+      zeroResults
+    },
+    sources,
+    searches
+  };
+}
+
+function getSearchAuditDetail(householdId, searchEventId) {
+  const event = db
+    .prepare(
+      `SELECT
+        search_events.*,
+        child_profiles.display_name AS child_profile_name
+       FROM search_events
+       LEFT JOIN child_profiles ON child_profiles.id = search_events.child_profile_id
+       WHERE search_events.household_id = ?
+        AND search_events.id = ?`
+    )
+    .get(householdId, searchEventId);
+
+  if (!event) {
+    return null;
+  }
+
+  const candidates = db
+    .prepare(
+      `SELECT
+        search_event_candidates.*,
+        videos.external_id AS video_external_id,
+        channels.external_id AS channel_external_id
+       FROM search_event_candidates
+       LEFT JOIN videos ON videos.id = search_event_candidates.video_id
+       LEFT JOIN channels ON channels.id = search_event_candidates.channel_id
+       WHERE search_event_candidates.household_id = ?
+        AND search_event_candidates.search_event_id = ?
+       ORDER BY
+        CASE WHEN search_event_candidates.source_rank IS NULL THEN 1 ELSE 0 END,
+        search_event_candidates.source_rank ASC,
+        search_event_candidates.id ASC`
+    )
+    .all(householdId, searchEventId)
+    .map((candidate) => ({
+      ...candidate,
+      content_tags: parseLabels(candidate.content_tags_json),
+      risk_tags: parseLabels(candidate.risk_tags_json),
+      quality_tags: parseLabels(candidate.quality_tags_json)
+    }));
+
+  return {
+    event: {
+      ...event,
+      source_mode: event.source_mode || 'unknown',
+      hidden_count: Math.max(0, Number(event.source_candidate_count || 0) - Number(event.shown_to_child_count || 0))
+    },
+    candidates
+  };
+}
+
 function sortDecisionRows(rows, sort) {
   const sorted = [...rows];
 
@@ -444,5 +573,7 @@ module.exports = {
   getFirstChildProfile,
   getParentDashboard,
   getReviewQueue,
-  getDecisionHistory
+  getDecisionHistory,
+  getSearchAuditDetail,
+  getSearchAuditList
 };

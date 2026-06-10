@@ -1,0 +1,80 @@
+<%- include('../partials/head', { title }) %>
+<%- include('../partials/header') %>
+
+<main class="page parent-page">
+  <section class="page-heading compact-heading">
+    <p class="eyebrow">Parent audit</p>
+    <h1>Search details</h1>
+    <p class="muted"><%= audit.event.query %> · <%= audit.event.created_at %></p>
+  </section>
+
+  <section class="dashboard-grid" aria-label="Search summary">
+    <article class="panel">
+      <h2>Source</h2>
+      <p class="muted"><%= audit.event.source_mode %></p>
+    </article>
+    <article class="panel">
+      <h2>Child profile</h2>
+      <p class="muted"><%= audit.event.child_profile_name || 'No child profile' %></p>
+    </article>
+    <article class="panel">
+      <h2>Shown</h2>
+      <p class="muted"><%= audit.event.shown_to_child_count %> of <%= audit.event.source_candidate_count %></p>
+    </article>
+    <article class="panel">
+      <h2>Review</h2>
+      <p class="muted"><%= audit.event.sent_to_review_count %> sent to review</p>
+    </article>
+  </section>
+
+  <section class="decision-history search-detail-list">
+    <div class="action-row">
+      <a class="secondary-button small-button" href="/parent/searches">Back to searches</a>
+    </div>
+
+    <% if (audit.candidates.length) { %>
+      <% audit.candidates.forEach((candidate) => { %>
+        <article class="history-row search-audit-row">
+          <div class="history-main">
+            <p class="category">
+              #<%= candidate.source_rank || '?' %> · <%= candidate.final_decision %> · <%= candidate.shown_to_child ? 'shown' : 'hidden' %>
+            </p>
+            <h3><%= candidate.title %></h3>
+            <p class="muted"><%= candidate.channel_title || 'Unknown channel' %></p>
+            <p class="review-reason compact-note"><%= candidate.visibility_reason %></p>
+            <% if (candidate.hard_block_reason) { %>
+              <p class="muted"><strong>Hard block:</strong> <%= candidate.hard_block_reason %></p>
+            <% } %>
+            <% if (candidate.content_tags.length || candidate.quality_tags.length || candidate.risk_tags.length) { %>
+              <ul class="label-list compact-labels">
+                <% candidate.content_tags.forEach((tag) => { %>
+                  <li><%= tag %></li>
+                <% }) %>
+                <% candidate.quality_tags.forEach((tag) => { %>
+                  <li><%= tag %></li>
+                <% }) %>
+                <% candidate.risk_tags.forEach((tag) => { %>
+                  <li><%= tag %></li>
+                <% }) %>
+              </ul>
+            <% } %>
+          </div>
+          <div class="search-audit-metrics">
+            <span><strong><%= candidate.moderation_source || 'unknown' %></strong> source</span>
+            <span><strong><%= candidate.parent_decision_affected ? 'yes' : 'no' %></strong> parent override</span>
+            <span><strong><%= candidate.review_queue_state || 'none' %></strong> review queue</span>
+            <% if (candidate.review_queue_reason_code) { %>
+              <span><strong><%= candidate.review_queue_reason_code %></strong> queue reason</span>
+            <% } %>
+          </div>
+        </article>
+      <% }) %>
+    <% } else { %>
+      <article class="panel">
+        <p class="muted">No candidate audit rows were saved for this search.</p>
+      </article>
+    <% } %>
+  </section>
+</main>
+
+<%- include('../partials/footer') %>
