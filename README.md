@@ -86,7 +86,7 @@ assets/
 - Transcript text is not stored by default.
 - Search uses either mock database candidates or a YouTube Data API source adapter behind the same internal service boundary.
 - YouTube responses are normalized into KidView candidate records. Raw YouTube API responses and transcript text are not stored by default.
-- Blocked, pending-review, unknown, Short, live, and upcoming stream candidates are not shown to children.
+- Blocked, pending-review, unknown, `allow_limited`, Short, live, and upcoming stream candidates are not shown to children.
 
 ## Testing The Fixture Review Flow
 
@@ -106,8 +106,8 @@ The seed data loads YouTube-shaped fixture candidates from `app/services/fixture
 
 3. Visit `http://localhost:3002/child/search` and try fixture-backed searches:
 
-   - `science` shows currently approved/limited educational candidates.
-   - `animation` starts hidden until a parent approves the Pixar sample.
+   - `science` shows approved educational candidates. Limited educational candidates remain parent-facing.
+   - `animation` shows the approved official animation sample and keeps low-confidence candidates hidden.
    - `drama` stays hidden because it requires review.
    - `otters` shows through an approved channel decision.
 
@@ -208,7 +208,9 @@ Decision thresholds:
 - Score `45+`: `review`.
 - Anything lower: `unknown`.
 
-Child search results currently include only `allow` decisions. `allow_limited`, `review`, and `unknown` stay parent-facing in the review queue. Hard-blocked items are silently filtered out of child results and do not create normal parent review queue items.
+Child search results currently include only `allow` decisions. `allow_limited` means parent-approved or likely useful, but limited-access videos are not child-visible in this version because KidView does not yet have real limited-access mechanics such as quotas, sessions, or parent unlocks. `allow_limited`, `review`, and `unknown` stay parent-facing in the review queue and decision history. Hard-blocked items are silently filtered out of child results and do not create normal parent review queue items.
+
+Search audit detail pages use the same rule: an `allow_limited` candidate should say `Hidden because limited-access videos are not child-visible in this version.`
 
 Live status is tracked as `none`, `upcoming`, `live`, or `completed_live`. In v1, `live` and `upcoming` streams are hard-blocked because KidView cannot assess changing real-time content before the child watches it, and approved channels or durable video approvals do not override that block. These hard-blocked streams do not create normal parent review queue items by default. Completed livestream recordings may be reviewed or allowed later, especially when they come from trusted channels and the rest of the score is strong.
 
@@ -224,6 +226,37 @@ KidView keeps global source data separate from household workflow state:
 The parent review page shows only pending review items whose current moderation decision is `allow_limited`, `review`, or `unknown`. Hard blocks are not parent-actionable queue items by default: Shorts, non-embeddable videos, live/upcoming streams, blocked channels, and durable household block decisions are filtered or resolved outside the normal queue.
 
 Approving or blocking a video resolves the pending review item and writes the durable household video decision. Clearing the queue marks pending items as `dismissed` for the current household only; it does not delete videos, channels, moderation reviews, search history, or parent decisions. If a child searches for the same dismissed video again later, KidView may create a new pending review item unless a durable household video/channel decision already applies.
+
+## Manual Validation Checklist
+
+This repo does not currently have an automated test runner. For lightweight validation after search or moderation changes:
+
+1. Run migrations from a clean temporary database:
+
+   ```sh
+   DATABASE_PATH=/private/tmp/kidview-clean-check.sqlite npm run db:migrate
+   ```
+
+2. Reset and seed the local development database:
+
+   ```sh
+   npm run db:reset
+   ```
+
+3. Start with fixture data:
+
+   ```sh
+   VIDEO_SOURCE=mock npm run dev
+   ```
+
+4. Search as a child for `science`, `animation`, `drama`, and `otters`.
+5. Confirm child-visible results are capped at three and use local category icons.
+6. Confirm hard-blocked items, Shorts, live/upcoming streams, review, unknown, and `allow_limited` items do not appear to children.
+7. Confirm a zero-result child search appears in `/parent/searches` when the zero-result view is selected.
+8. Open the audit detail page and confirm candidates are grouped into shown, review, hidden, hard-blocked, and limited sections.
+9. Confirm `/parent/decisions` still allows editing video and channel decisions.
+10. Confirm moderation explanations display read-only and do not prefill editable parent notes.
+11. Inspect the database enough to confirm raw YouTube API responses, transcripts, and thumbnails are not persisted.
 
 Useful searches to try with the YouTube source:
 

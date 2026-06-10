@@ -709,7 +709,7 @@ function visibilityReasonFor({ decision, shownToChild }) {
 
   const reasons = {
     allow: "Hidden because the child result limit had already been reached.",
-    allow_limited: "Hidden because allow_limited requires parent review before child display.",
+    allow_limited: "Hidden because limited-access videos are not child-visible in this version.",
     review: "Hidden because this candidate requires parent review before child display.",
     block: "Hidden because this candidate is blocked for child search.",
     unknown: "Hidden because KidView did not have enough confidence to show it.",
@@ -787,6 +787,9 @@ function moderateCandidatesWithDiagnostics({
       result: normalizeCandidate(candidate, decisionResult),
     };
   });
+  // v1 child visibility is intentionally simple: only `allow` is child-visible.
+  // `allow_limited` is a parent-facing approval state until KidView has real
+  // limited-access mechanics such as quotas, session rules, or parent unlocks.
   const results = normalized
     .map((entry) => entry.result)
     .filter((result) => result.decision === "allow")
