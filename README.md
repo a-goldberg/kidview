@@ -227,6 +227,8 @@ The parent review page shows only pending review items whose current moderation 
 
 Approving or blocking a video resolves the pending review item and writes the durable household video decision. Clearing the queue marks pending items as `dismissed` for the current household only; it does not delete videos, channels, moderation reviews, search history, or parent decisions. If a child searches for the same dismissed video again later, KidView may create a new pending review item unless a durable household video/channel decision already applies.
 
+For the parent-facing vocabulary behind search audit, review queue, decision, and tag values, see [KidView Audit Vocabulary](docs/audit-vocabulary.md).
+
 ## Manual Validation Checklist
 
 This repo does not currently have an automated test runner. For lightweight validation after search or moderation changes:
