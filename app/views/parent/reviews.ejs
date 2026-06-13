@@ -86,13 +86,13 @@
               <% if (video.content_tags.length || video.quality_tags.length || video.risk_tags.length) { %>
                 <ul class="label-list">
                   <% video.content_tags.forEach((tag) => { %>
-                    <li><%= tag %></li>
+                    <li class="content-tags"><%= tag %></li>
                   <% }) %>
                   <% video.quality_tags.forEach((tag) => { %>
-                    <li><%= tag %></li>
+                    <li class="quality-tags"><%= tag %></li>
                   <% }) %>
                   <% video.risk_tags.forEach((tag) => { %>
-                    <li><%= tag %></li>
+                    <li class="risk-tags"><%= tag %></li>
                   <% }) %>
                 </ul>
               <% } %>
@@ -106,9 +106,12 @@
             </label>
             <div class="button-row">
               <button class="primary-button" type="submit" name="decision" value="allow">Allow video</button>
+              <button class="danger-button" type="submit" name="decision" value="block">Block video</button>
+              </div>
+              <div class="button-row">
               <button class="secondary-button" type="submit" name="decision" value="allow_limited">Allow limited</button>
               <button class="secondary-button" type="submit" name="decision" value="review_required">Review required</button>
-              <button class="danger-button" type="submit" name="decision" value="block">Block video</button>
+              </div>
             </div>
             <p class="decision-status" role="status"></p>
           </form>
@@ -135,9 +138,9 @@
             <span class="muted">Current: <strong data-decision-current><%= channel.decision || 'none' %></strong></span>
             <input name="reason" placeholder="Parent note" value="<%= channel.parent_facing_reason || '' %>">
             <div class="button-row">
-              <button class="secondary-button" type="submit" name="decision" value="approved">Approve</button>
-              <button class="secondary-button" type="submit" name="decision" value="review_first">Review first</button>
+              <button class="primary-button" type="submit" name="decision" value="approved">Approve</button>
               <button class="danger-button" type="submit" name="decision" value="blocked">Block</button>
+              <button class="secondary-button" type="submit" name="decision" value="review_first">Review first</button>
             </div>
             <p class="decision-status" role="status"></p>
           </form>

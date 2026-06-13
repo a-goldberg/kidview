@@ -285,6 +285,7 @@ input:focus {
   color: var(--brand-dark);
   background: #edf6f2;
   border: 1px solid #cde0d7;
+  font-weight: 500;
 }
 
 .danger-button {
@@ -421,6 +422,10 @@ input:focus {
   font-weight: 700;
 }
 
+li.risk-tags {
+  background: #ffeae2;
+}
+
 .review-reason {
   padding: 0.55rem;
   background: #fff8ec;
@@ -489,7 +494,9 @@ input:focus {
 
 .filter-bar {
   display: grid;
-  grid-template-columns: minmax(16rem, 1fr) minmax(10rem, 14rem) minmax(12rem, 16rem) auto;
+  grid-template-columns:
+    minmax(16rem, 1fr) minmax(10rem, 14rem) minmax(12rem, 16rem)
+    auto;
   gap: 0.75rem;
   align-items: end;
   padding: 1rem;
@@ -546,6 +553,15 @@ input:focus {
 .decision-section {
   display: grid;
   gap: 0.75rem;
+}
+
+.decision-section h2 {
+  margin: 1rem 0 0.25rem;
+  font-size: 1.5em;
+}
+
+.decision-section h2 span {
+  font-size: 1em;
 }
 
 .history-row {

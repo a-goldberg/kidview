@@ -5,7 +5,7 @@
   <section class="page-heading compact-heading">
     <p class="eyebrow">Parent audit</p>
     <h1>Search details</h1>
-    <p class="muted"><%= audit.event.query %> · <%= audit.event.created_at %></p>
+    <p class="muted"><strong>"<%= audit.event.query %>"</strong> · <%= audit.event.created_at %></p>
   </section>
 
   <section class="dashboard-grid" aria-label="Search summary">
@@ -68,23 +68,23 @@
                 <% if (candidate.content_tags.length || candidate.quality_tags.length || candidate.risk_tags.length) { %>
                   <ul class="label-list compact-labels">
                     <% candidate.content_tags.forEach((tag) => { %>
-                      <li><%= tag %></li>
+                      <li class="content-tags"><%= tag %></li>
                     <% }) %>
                     <% candidate.quality_tags.forEach((tag) => { %>
                       <li><%= tag %></li>
                     <% }) %>
                     <% candidate.risk_tags.forEach((tag) => { %>
-                      <li><%= tag %></li>
+                      <li class="risk-tags"><%= tag %></li>
                     <% }) %>
                   </ul>
                 <% } %>
               </div>
               <div class="search-audit-metrics">
-                <span><strong><%= candidate.moderation_source || 'unknown' %></strong> source</span>
-                <span><strong><%= candidate.parent_decision_affected ? 'yes' : 'no' %></strong> parent override</span>
-                <span><strong><%= candidate.review_queue_state || 'none' %></strong> review queue</span>
+                <p><strong>Source:</strong> <%= candidate.moderation_source || 'unknown' %></p>
+                <p><strong>Parent Override:</strong> <%= candidate.parent_decision_affected ? 'yes' : 'no' %></p>
+                <p><strong>Review Queue:</strong> <%= candidate.review_queue_state || 'none' %></p>
                 <% if (candidate.review_queue_reason_code) { %>
-                  <span><strong><%= candidate.review_queue_reason_code %></strong> queue reason</span>
+                  <p><strong>Queue Reason:</strong> <%= candidate.review_queue_reason_code %></p>
                 <% } %>
                 <div class="button-row">
                   <% if (candidate.review_link && (candidate.review_queue_state === 'created_pending' || candidate.review_queue_state === 'matched_pending')) { %>
