@@ -41,7 +41,7 @@ KidView is a small, maintainable Node/Express/EJS app. Keep the codebase boring 
 
 - Prefer clear file organization over clever abstractions.
 - Keep route handlers thin; move logic into services.
-- Comment non-obvious logic, at least basic explanations of files, routes, functions, etc.
+- Comment all non-obvious logic, at least basic explanations of files, routes, functions, etc.
 - Validate external API/model responses with zod where practical.
 - Add setup notes to README whenever environment or run steps change.
 - Don't add complexity just for the sake of "impressive" or cutting-edge programming. Where possible, avoid new frameworks, narrow-use libraries, microservices, containerization, slick UI animations that lack purpose, etc.
