@@ -15,6 +15,15 @@ This glossary lists the values KidView currently stores or displays in parent se
 | `final_decision` | `block` | Blocked by a hard rule, parent decision, channel decision, or severe-risk moderation result. |
 | `final_decision` | `unknown` | KidView did not have enough confidence/context to show the video. |
 | `shown_to_child` | `0`, `1` | Whether this exact candidate appeared in the child result list for that search. |
+| `visibility_reason_code` | `shown_allow` | Candidate was shown because it was allowed within the result cap. |
+| `visibility_reason_code` | `shown_allow_limited_profile_policy` | Candidate was shown because child profile policy made `allow_limited` child-visible. |
+| `visibility_reason_code` | `hidden_allow_limited_profile_policy` | Candidate was hidden because child profile policy did not make `allow_limited` child-visible. |
+| `visibility_reason_code` | `hidden_result_limit` | Candidate was otherwise eligible but hidden by the three-result cap. |
+| `visibility_reason_code` | `hidden_review_required` | Candidate requires parent review before child display. |
+| `visibility_reason_code` | `hidden_blocked` | Candidate was blocked for child search. |
+| `visibility_reason_code` | `hidden_unknown` | Candidate lacked enough confidence/context for child display. |
+| `visibility_reason_code` | `hidden_not_child_visible:<policy>` | Fallback for hidden candidates that did not match a more specific visibility code. |
+| `visibility_reason_code` | `source_filter:not_embeddable` | Candidate was hidden before persistence because it was not embeddable. |
 | `moderation_source` | `source_filter` | Rejected before local video persistence, currently for non-embeddable YouTube candidates. |
 | `moderation_source` | `hard_filter` | Blocked by non-negotiable product rules such as Shorts, live/upcoming streams, or blocked channels. |
 | `moderation_source` | `parent_video_decision` | A durable household video decision decided the outcome. |
@@ -34,7 +43,8 @@ These are parent-facing explanation strings stored per audited candidate.
 | --- | --- |
 | Shown `allow` candidate | `Shown because moderation resolved this candidate as allowed within the child result limit.` |
 | Hidden `allow` candidate | `Hidden because the child result limit had already been reached.` |
-| Hidden `allow_limited` candidate | `Hidden because limited-access videos are not child-visible in this version.` |
+| Shown `allow_limited` candidate | `Shown because this child profile allows limited-access videos under the current profile policy.` |
+| Hidden `allow_limited` candidate | `Hidden because this child profile does not make limited-access videos child-visible.` |
 | Hidden `review` candidate | `Hidden because this candidate requires parent review before child display.` |
 | Hidden `block` candidate | `Hidden because this candidate is blocked for child search.` |
 | Hidden `unknown` candidate | `Hidden because KidView did not have enough confidence to show it.` |
@@ -51,6 +61,19 @@ These are parent-facing explanation strings stored per audited candidate.
 | `parent_block` | Hidden by parent block decision | A parent decision affected the result and the final decision is `block`. |
 | `unknown` | Hidden because unknown / low confidence / not child-visible | Fallback group for hidden candidates that are not review, hard block, parent block, or limited. |
 | `allow_limited` | Hidden because allow_limited | Final decision is `allow_limited` and the item was not child-visible. |
+
+## Child Profile allow_limited Policy
+
+These values live on `child_profiles.allow_limited_policy`. The current default is `block`, so existing child behavior remains unchanged until profile management UI is added.
+
+| Policy | Meaning |
+| --- | --- |
+| `block` | `allow_limited` candidates are never child-visible. This is the current default. |
+| `review` | `allow_limited` candidates remain hidden and should be handled as parent-review candidates. |
+| `allow` | `allow_limited` candidates can be child-visible like `allow` candidates, without overriding hard blocks or review-first channel decisions. |
+| `limited_frequency` | At most one `allow_limited` candidate can fill an open result slot after normal `allow` results are considered, and only when its confidence is above `child_profiles.allow_limited_min_confidence`. |
+
+The default `allow_limited_min_confidence` is `0.70`. This threshold only matters for `limited_frequency`.
 
 ## Review Queue State
 
@@ -163,8 +186,8 @@ These labels are stored on `videos.labels_json` and can appear in child-safe car
 | `blocked-channel` | Hard filter blocked a channel the household blocked. |
 | `not-embeddable` | Source filter blocked a non-embeddable candidate before persistence. |
 | `channel-review-first` | Household channel decision requires review first. |
-| `risky-or-ambiguous-topic` | Text matches risk/ambiguity terms such as scary, secrets, drama, prank, challenge, mystery box, gaming, Minecraft, Roblox, Fortnite, or dark fantasy. |
-| `severe-risk-flag` | Text matches severe risk terms such as self-harm, sexual content, gore, murder, weapons, poison, dangerous, rooftop, or skyscraper. |
+| `risky-or-ambiguous-topic` | Text matches risk/ambiguity terms such as scary, secrets, drama, prank, challenge, dangerous, mystery box, gaming, Minecraft, Roblox, Fortnite, or dark fantasy. |
+| `severe-risk-flag` | Text matches severe risk terms such as self-harm, sexual content, gore, murder, weapons, poison, toxins, rooftop, or skyscraper. |
 | `clickbait-title` | Title matches clickbait patterns such as `!!!`, `you won't believe`, `watch until the end`, shocking, or insane. |
 | `creator-style-channel` | Channel name looks like a creator/gaming/vlog channel pattern. |
 | `very-long-video` | Duration is over 30 minutes. |

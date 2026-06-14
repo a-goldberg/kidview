@@ -11,9 +11,9 @@ const RULE_MODEL_NAME = "rule-based-v1";
 const RULE_PROMPT_VERSION = "rules-v1";
 
 const SEVERE_RISK_PATTERN =
-  /suicide|self[- ]?harm|porn|sexual|gore|graphic|murder|kill|weapon|gun|knife|flamethrower|poison|toxin|dangerous|skyscraper|rooftop/i;
+  /suicide|self[- ]?harm|porn|sexual|gore|graphic|murder|kill|weapon|gun|knife|flamethrower|poison|toxin|skyscraper|rooftop/i;
 const RISK_PATTERN =
-  /scary|secret|secrets|exposed|drama|breakup|rumor|prank|challenge|mystery box|unboxing|haul|shopping|spent \$|won't believe|do not try|gaming|minecraft|roblox|fortnite|dark fantasy|pvp/i;
+  /scary|secret|secrets|exposed|drama|breakup|rumor|prank|challenge|mystery box|unboxing|haul|shopping|spent \$|won't believe|do not try|dangerous|gaming|minecraft|roblox|fortnite|dark fantasy|pvp/i;
 const CLICKBAIT_PATTERN =
   /!!!|😱|🔥|you won't believe|what happened next|watch until the end|shocking|insane/i;
 const EDUCATIONAL_PATTERN =
@@ -30,6 +30,14 @@ const REVIEW_QUEUE_DECISIONS = new Set([
   "allow_limited",
   "review",
   "unknown",
+]);
+const DEFAULT_ALLOW_LIMITED_POLICY = "block";
+const DEFAULT_ALLOW_LIMITED_MIN_CONFIDENCE = 0.7;
+const ALLOW_LIMITED_POLICIES = new Set([
+  "block",
+  "review",
+  "allow",
+  "limited_frequency",
 ]);
 
 function liveStatusFor(candidate) {
@@ -109,6 +117,34 @@ function parseLabels(labelsJson) {
   } catch (error) {
     return [];
   }
+}
+
+function getChildAllowLimitedPolicy({ householdId, childProfileId }) {
+  if (!householdId || !childProfileId) {
+    return {
+      allowLimitedPolicy: DEFAULT_ALLOW_LIMITED_POLICY,
+      allowLimitedMinConfidence: DEFAULT_ALLOW_LIMITED_MIN_CONFIDENCE,
+    };
+  }
+
+  const profile = db.prepare(
+    `SELECT allow_limited_policy, allow_limited_min_confidence
+     FROM child_profiles
+     WHERE household_id = ?
+      AND id = ?`,
+  ).get(householdId, childProfileId);
+  const policy = profile && ALLOW_LIMITED_POLICIES.has(profile.allow_limited_policy)
+    ? profile.allow_limited_policy
+    : DEFAULT_ALLOW_LIMITED_POLICY;
+  const minConfidence = Number(profile && profile.allow_limited_min_confidence);
+
+  return {
+    allowLimitedPolicy: policy,
+    allowLimitedMinConfidence:
+      Number.isFinite(minConfidence) && minConfidence >= 0 && minConfidence <= 1
+        ? minConfidence
+        : DEFAULT_ALLOW_LIMITED_MIN_CONFIDENCE,
+  };
 }
 
 function ageInDays(publishedAt, now = new Date()) {
@@ -702,9 +738,17 @@ function updateDiagnostics(diagnostics, decisionResult) {
   }
 }
 
-function visibilityReasonFor({ decision, shownToChild }) {
+function visibilityReasonFor({ decision, shownToChild, visibilityReasonCode }) {
   if (shownToChild) {
+    if (visibilityReasonCode === "shown_allow_limited_profile_policy") {
+      return "Shown because this child profile allows limited-access videos under the current profile policy.";
+    }
+
     return "Shown because moderation resolved this candidate as allowed within the child result limit.";
+  }
+
+  if (visibilityReasonCode === "hidden_allow_limited_profile_policy") {
+    return "Hidden because this child profile does not make limited-access videos child-visible.";
   }
 
   const reasons = {
@@ -718,7 +762,36 @@ function visibilityReasonFor({ decision, shownToChild }) {
   return reasons[decision] || "Hidden because it was not eligible for child display.";
 }
 
-function auditCandidateFor(candidate, decisionResult, shownToChild) {
+function visibilityReasonCodeFor({ decision, shownToChild, allowLimitedPolicy }) {
+  if (shownToChild && decision === "allow_limited") {
+    return "shown_allow_limited_profile_policy";
+  }
+
+  if (!shownToChild && decision === "allow_limited") {
+    return "hidden_allow_limited_profile_policy";
+  }
+
+  if (shownToChild) {
+    return "shown_allow";
+  }
+
+  const codes = {
+    allow: "hidden_result_limit",
+    review: "hidden_review_required",
+    block: "hidden_blocked",
+    unknown: "hidden_unknown",
+  };
+
+  return codes[decision] || `hidden_not_child_visible:${allowLimitedPolicy || "default"}`;
+}
+
+function auditCandidateFor(candidate, decisionResult, shownToChild, allowLimitedPolicy) {
+  const visibilityReasonCode = visibilityReasonCodeFor({
+    decision: decisionResult.decision,
+    shownToChild,
+    allowLimitedPolicy,
+  });
+
   return {
     videoId: candidate.videoId || null,
     channelId: candidate.channelId || null,
@@ -727,9 +800,11 @@ function auditCandidateFor(candidate, decisionResult, shownToChild) {
     channelTitle: candidate.channelTitle || null,
     finalDecision: decisionResult.decision || "unknown",
     shownToChild,
+    visibilityReasonCode,
     visibilityReason: visibilityReasonFor({
       decision: decisionResult.decision,
       shownToChild,
+      visibilityReasonCode,
     }),
     hardBlockReason:
       decisionResult.source === "hard_filter"
@@ -744,6 +819,40 @@ function auditCandidateFor(candidate, decisionResult, shownToChild) {
     reviewQueueState: decisionResult.reviewQueue && decisionResult.reviewQueue.state,
     reviewQueueReasonCode: decisionResult.reviewQueue && decisionResult.reviewQueue.reasonCode,
   };
+}
+
+function selectChildVisibleEntries(normalized, allowLimitedPolicy, allowLimitedMinConfidence, limit) {
+  if (allowLimitedPolicy === "allow") {
+    return normalized
+      .filter((entry) =>
+        entry.result.decision === "allow" ||
+        entry.result.decision === "allow_limited"
+      )
+      .slice(0, limit);
+  }
+
+  const allowed = normalized.filter((entry) => entry.result.decision === "allow");
+
+  if (allowLimitedPolicy !== "limited_frequency") {
+    return allowed.slice(0, limit);
+  }
+
+  const selected = allowed.slice(0, limit);
+
+  if (selected.length >= limit) {
+    return selected;
+  }
+
+  const limited = normalized.find((entry) =>
+    entry.result.decision === "allow_limited" &&
+    Number(entry.result.confidenceScore || 0) > allowLimitedMinConfidence
+  );
+
+  if (limited) {
+    selected.push(limited);
+  }
+
+  return selected;
 }
 
 function moderateCandidatesWithDiagnostics({
@@ -772,6 +881,7 @@ function moderateCandidatesWithDiagnostics({
     };
   }
 
+  const profilePolicy = getChildAllowLimitedPolicy({ householdId, childProfileId });
   const maps = getDecisionMaps(householdId, candidates);
   const normalized = candidates.map((candidate) => {
     const decisionResult = resolveDecision({
@@ -787,30 +897,34 @@ function moderateCandidatesWithDiagnostics({
       result: normalizeCandidate(candidate, decisionResult),
     };
   });
-  // v1 child visibility is intentionally simple: only `allow` is child-visible.
-  // `allow_limited` is a parent-facing approval state until KidView has real
-  // limited-access mechanics such as quotas, session rules, or parent unlocks.
-  const results = normalized
-    .map((entry) => entry.result)
-    .filter((result) => result.decision === "allow")
-    .slice(0, limit);
+  // Hard filters and parent block/review-first decisions are resolved before this
+  // point. This policy only controls candidates that survived as allow_limited.
+  const selectedEntries = selectChildVisibleEntries(
+    normalized,
+    profilePolicy.allowLimitedPolicy,
+    profilePolicy.allowLimitedMinConfidence,
+    limit,
+  );
+  const results = selectedEntries.map((entry) => entry.result);
   const shownVideoIds = new Set(results.map((result) => result.videoId));
 
   return {
     results,
     diagnostics,
+    allowLimitedPolicy: profilePolicy,
     auditCandidates: normalized.map((entry) =>
       auditCandidateFor(
         entry.candidate,
         entry.decisionResult,
         shownVideoIds.has(entry.candidate.videoId),
+        profilePolicy.allowLimitedPolicy,
       ),
     ),
   };
 }
 
-function moderateCandidates({ householdId, candidates, limit = 3 }) {
-  return moderateCandidatesWithDiagnostics({ householdId, candidates, limit })
+function moderateCandidates({ householdId, childProfileId, candidates, limit = 3 }) {
+  return moderateCandidatesWithDiagnostics({ householdId, childProfileId, candidates, limit })
     .results;
 }
 
@@ -851,7 +965,7 @@ function remoderateChannelVideos({ householdId, channelId }) {
   return candidates.length;
 }
 
-function getChildSafeVideo({ householdId, videoId }) {
+function getChildSafeVideo({ householdId, childProfileId, videoId }) {
   const candidate = db
     .prepare(`${selectModerationCandidate()} WHERE videos.id = ?`)
     .get(videoId);
@@ -862,6 +976,7 @@ function getChildSafeVideo({ householdId, videoId }) {
 
   const [result] = moderateCandidates({
     householdId,
+    childProfileId,
     candidates: [candidate],
     limit: 1,
   });

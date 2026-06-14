@@ -41,6 +41,7 @@
             <li>
               <strong><%= child.display_name %></strong>
               <span>Profile only, not a login account</span>
+              <span>Limited policy: <%= child.allow_limited_policy || 'block' %></span>
             </li>
           <% }) %>
         </ul>
@@ -66,6 +67,7 @@
             <li>
               <strong><%= child.display_name %></strong>
               <span>Profile only, not a login account</span>
+              <span>Limited policy: <%= child.allow_limited_policy || 'block' %>, threshold <%= Math.round(Number(child.allow_limited_min_confidence || 0.7) * 100) %>%</span>
             </li>
           <% }) %>
         </ul>
@@ -86,7 +88,7 @@
         </li>
         <li>
           <strong>Child-visible decisions</strong>
-          <span>Only allow is child-visible. allow_limited remains parent-facing in this version.</span>
+          <span>Only allow is child-visible by default. Child profile allow_limited policy is currently set up for future controls.</span>
         </li>
         <li>
           <strong>Hard blocks</strong>

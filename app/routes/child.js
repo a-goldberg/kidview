@@ -61,6 +61,7 @@ router.get('/videos/:videoId', (req, res) => {
   const videoId = Number(req.params.videoId);
   const video = getChildSafeVideo({
     householdId: childProfile && childProfile.householdId,
+    childProfileId: childProfile && childProfile.id,
     videoId
   });
 

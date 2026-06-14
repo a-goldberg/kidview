@@ -85,6 +85,9 @@
               <div class="search-audit-metrics">
                 <p><strong>Source:</strong> <%= candidate.moderation_source || 'unknown' %></p>
                 <p><strong>Parent Override:</strong> <%= candidate.parent_decision_affected ? 'yes' : 'no' %></p>
+                <% if (candidate.visibility_reason_code) { %>
+                  <p><strong>Audit Reason:</strong> <%= candidate.visibility_reason_code %></p>
+                <% } %>
                 <p><strong>Review Queue:</strong> <%= candidate.review_queue_state || 'none' %></p>
                 <% if (candidate.review_queue_reason_code) { %>
                   <p><strong>Queue Reason:</strong> <%= candidate.review_queue_reason_code %></p>

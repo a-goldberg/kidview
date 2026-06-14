@@ -201,6 +201,7 @@ function sourceRejectedAuditCandidate(candidate) {
     channelTitle: candidate.channelTitle || null,
     finalDecision: 'block',
     shownToChild: false,
+    visibilityReasonCode: 'source_filter:not_embeddable',
     visibilityReason: 'Hidden because the source candidate could not be safely embedded in KidView.',
     hardBlockReason: 'Filtered because non-embeddable videos are not allowed for child search.',
     contentTags: [],
@@ -269,7 +270,8 @@ function writeSearchAudit({
     sourceCandidates: sourceResponse.sourceCount,
     persistedCandidates: sourceResponse.candidates.length,
     sourceHardRejected: sourceResponse.sourceHardRejected,
-    moderationHardRejected: diagnostics.hardRejected
+    moderationHardRejected: diagnostics.hardRejected,
+    allowLimitedPolicy: moderation.allowLimitedPolicy || null
   };
 
   const insertSearchEvent = db.prepare(
@@ -309,6 +311,7 @@ function writeSearchAudit({
       channel_title,
       final_decision,
       shown_to_child,
+      visibility_reason_code,
       visibility_reason,
       hard_block_reason,
       content_tags_json,
@@ -320,7 +323,7 @@ function writeSearchAudit({
       review_queue_state,
       review_queue_reason_code
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
   const attachReviewItem = db.prepare(
     `UPDATE household_review_items
@@ -368,6 +371,7 @@ function writeSearchAudit({
         candidate.channelTitle || null,
         candidate.finalDecision,
         candidate.shownToChild ? 1 : 0,
+        candidate.visibilityReasonCode || null,
         candidate.visibilityReason,
         candidate.hardBlockReason || null,
         JSON.stringify(candidate.contentTags || []),

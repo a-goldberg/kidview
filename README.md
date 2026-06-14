@@ -189,8 +189,8 @@ Scoring starts at `50`, then adjusts up or down:
 - `+6` reasonable duration, currently 2 to 15 minutes.
 - View count signal: `+10` at 1,000,000+, `+6` at 100,000+, `+2` at 10,000+.
 - Low view count from unknown channels is negative: `-5` at 1,000 to 9,999 views, `-15` below 1,000 views.
-- `-18` risky or ambiguous terms, such as scary, secrets, drama, prank, challenge, unboxing, shopping, gaming, or Minecraft.
-- `-40` severe risk terms, such as self-harm, sexual content, gore, weapons, poison, dangerous stunts, rooftops, or skyscrapers.
+- `-18` risky or ambiguous terms, such as scary, secrets, drama, prank, challenge, dangerous, unboxing, shopping, gaming, or Minecraft.
+- `-40` severe risk terms, such as self-harm, sexual content, gore, weapons, poison, toxins, rooftops, or skyscrapers.
 - `-20` clickbait title patterns.
 - `-8` creator-style channel name patterns.
 - `-14` very long videos, currently over 30 minutes.
@@ -208,9 +208,13 @@ Decision thresholds:
 - Score `45+`: `review`.
 - Anything lower: `unknown`.
 
-Child search results currently include only `allow` decisions. `allow_limited` means parent-approved or likely useful, but limited-access videos are not child-visible in this version because KidView does not yet have real limited-access mechanics such as quotas, sessions, or parent unlocks. `allow_limited`, `review`, and `unknown` stay parent-facing in the review queue and decision history. Hard-blocked items are silently filtered out of child results and do not create normal parent review queue items.
+Child search results currently include only `allow` decisions by default. `allow_limited` means parent-approved or likely useful, but each child profile now has an `allow_limited_policy` field for upcoming profile management work. The default is `block`, so limited-access videos remain hidden today. Future profile settings can choose `block`, `review`, `allow`, or `limited_frequency`.
 
-Search audit detail pages use the same rule: an `allow_limited` candidate should say `Hidden because limited-access videos are not child-visible in this version.`
+When `limited_frequency` is eventually selected for a child profile, KidView allows at most one limited result per search, only after normal `allow` results are considered, and only when the limited candidate is above the profile confidence threshold. The default `allow_limited_min_confidence` is `0.70`.
+
+`allow_limited`, `review`, and `unknown` stay parent-facing in the review queue and decision history unless profile policy explicitly makes limited videos child-visible. Hard-blocked items are silently filtered out of child results and do not create normal parent review queue items.
+
+Search audit detail pages record profile-policy reasons for limited videos, such as `shown_allow_limited_profile_policy` and `hidden_allow_limited_profile_policy`.
 
 Live status is tracked as `none`, `upcoming`, `live`, or `completed_live`. In v1, `live` and `upcoming` streams are hard-blocked because KidView cannot assess changing real-time content before the child watches it, and approved channels or durable video approvals do not override that block. These hard-blocked streams do not create normal parent review queue items by default. Completed livestream recordings may be reviewed or allowed later, especially when they come from trusted channels and the rest of the score is strong.
 
