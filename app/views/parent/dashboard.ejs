@@ -5,11 +5,35 @@
   <section class="page-heading compact-heading">
     <p class="eyebrow">Parent dashboard</p>
     <h1><%= dashboard.household.name %></h1>
-    <p class="muted">Household policy, child profiles, and review queues.</p>
+    <p class="muted">One workspace for review decisions, search audit, child profiles, and policy settings.</p>
   </section>
 
-  <section class="dashboard-grid" aria-label="Dashboard summary">
+  <%- include('dashboard-nav', { activeSection: 'overview' }) %>
+
+  <section class="dashboard-grid parent-overview-grid" aria-label="Dashboard summary">
+    <article class="panel dashboard-summary-card">
+      <p class="category">Needs attention</p>
+      <h2><%= dashboard.pendingReviewCount %> pending video<%= dashboard.pendingReviewCount === 1 ? '' : 's' %></h2>
+      <p class="muted">Review parent-actionable videos before they can appear for children.</p>
+      <a class="secondary-button small-button" href="/parent/reviews">Open review queue</a>
+    </article>
+
+    <article class="panel dashboard-summary-card">
+      <p class="category">Audit trail</p>
+      <h2><%= dashboard.recentSearches.length %> recent search<%= dashboard.recentSearches.length === 1 ? '' : 'es' %></h2>
+      <p class="muted">See what was shown, hidden, blocked, or sent to review.</p>
+      <a class="secondary-button small-button" href="/parent/searches">Open search audit</a>
+    </article>
+
+    <article class="panel dashboard-summary-card">
+      <p class="category">Household decisions</p>
+      <h2>Decision history</h2>
+      <p class="muted">Find and adjust past video or channel choices.</p>
+      <a class="secondary-button small-button" href="/parent/decisions">Open decisions</a>
+    </article>
+
     <article class="panel">
+      <p class="category">Profiles</p>
       <h2>Child profiles</h2>
       <% if (dashboard.children.length) { %>
         <ul class="simple-list">
@@ -24,9 +48,62 @@
         <p class="muted">No child profiles yet.</p>
       <% } %>
     </article>
+  </section>
+
+  <section class="dashboard-workspace-grid" aria-label="Parent dashboard details">
+    <article class="panel" id="child-profiles">
+      <div class="section-heading-row">
+        <div>
+          <p class="eyebrow">Child profiles</p>
+          <h2>Profiles stay household-scoped</h2>
+        </div>
+        <span class="count-pill"><%= dashboard.children.length %></span>
+      </div>
+      <p class="muted">Child profiles are not login accounts. Future settings here can tune policy by profile without changing the household model.</p>
+      <% if (dashboard.children.length) { %>
+        <ul class="simple-list">
+          <% dashboard.children.forEach((child) => { %>
+            <li>
+              <strong><%= child.display_name %></strong>
+              <span>Profile only, not a login account</span>
+            </li>
+          <% }) %>
+        </ul>
+      <% } %>
+    </article>
+
+    <article class="panel" id="moderation-policy">
+      <div class="section-heading-row">
+        <div>
+          <p class="eyebrow">Moderation policy</p>
+          <h2>Current child visibility rules</h2>
+        </div>
+      </div>
+      <ul class="simple-list policy-list">
+        <li>
+          <strong>Results cap</strong>
+          <span>Child search shows at most three videos.</span>
+        </li>
+        <li>
+          <strong>Child-visible decisions</strong>
+          <span>Only allow is child-visible. allow_limited remains parent-facing in this version.</span>
+        </li>
+        <li>
+          <strong>Hard blocks</strong>
+          <span>Shorts, live/upcoming streams, non-embeddable videos, and blocked channels stay out of child results.</span>
+        </li>
+      </ul>
+      <a class="secondary-button small-button" href="/parent/searches">Audit recent searches</a>
+    </article>
 
     <article class="panel">
-      <h2>Recent searches</h2>
+      <div class="section-heading-row">
+        <div>
+          <p class="eyebrow">Recent searches</p>
+          <h2>Latest child searches</h2>
+        </div>
+        <a class="secondary-button small-button" href="/parent/searches">View all</a>
+      </div>
       <% if (dashboard.recentSearches.length) { %>
         <ul class="simple-list">
           <% dashboard.recentSearches.forEach((event) => { %>
@@ -39,17 +116,6 @@
       <% } else { %>
         <p class="muted">No searches have been logged yet.</p>
       <% } %>
-    </article>
-
-    <article class="panel">
-      <h2>Policy defaults</h2>
-      <p class="muted">Results are capped at three. Shorts and live/upcoming streams are blocked by default.</p>
-    </article>
-
-    <article class="panel">
-      <h2>Review queue</h2>
-      <p class="muted"><%= dashboard.pendingReviewCount %> video(s) need a parent decision.</p>
-      <a class="secondary-button" href="/parent/reviews">Review videos</a>
     </article>
   </section>
 </main>

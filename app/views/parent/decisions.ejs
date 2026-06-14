@@ -8,6 +8,8 @@
     <p class="muted">Find past video and channel decisions, then correct them when needed.</p>
   </section>
 
+  <%- include('dashboard-nav', { activeSection: 'decisions' }) %>
+
   <form class="filter-bar" action="/parent/decisions" method="get">
     <label>
       <span>Search decisions</span>

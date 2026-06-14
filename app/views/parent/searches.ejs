@@ -8,6 +8,8 @@
     <p class="muted">Recent household search outcomes and review signals.</p>
   </section>
 
+  <%- include('dashboard-nav', { activeSection: 'searches' }) %>
+
   <form class="filter-bar" action="/parent/searches" method="get">
     <label>
       <span>Search queries</span>

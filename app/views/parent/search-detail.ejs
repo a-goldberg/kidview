@@ -8,6 +8,13 @@
     <p class="muted"><strong>"<%= audit.event.query %>"</strong> · <%= audit.event.created_at %></p>
   </section>
 
+  <%- include('dashboard-nav', { activeSection: 'searches' }) %>
+
+  <div class="dashboard-back-row">
+    <a class="secondary-button small-button" href="/parent/searches">Back to search audit</a>
+    <a class="secondary-button small-button" href="/parent">Dashboard overview</a>
+  </div>
+
   <section class="dashboard-grid" aria-label="Search summary">
     <article class="panel">
       <h2>Source</h2>
@@ -28,10 +35,6 @@
   </section>
 
   <section class="decision-history search-detail-list">
-    <div class="action-row">
-      <a class="secondary-button small-button" href="/parent/searches">Back to searches</a>
-    </div>
-
     <% if (audit.candidates.length) { %>
       <% audit.groups.forEach((group) => { %>
         <div class="decision-section">
