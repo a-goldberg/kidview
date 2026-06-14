@@ -59,3 +59,9 @@ When reviewing the project (e.g., after large code changes or branch merges), fi
 ## User Interaction Preferences
 
 Don't assume. If the user does not provide enough detail to confidently execute their request, then do not proceed. Finish processing and preparing a plan for responding, but ask the user for clarification before finalizing and executing that plan. Display a list of the ambiguous points or missing information, and then step through each one with interactive prompts, giving the user a chance to fill in the gaps. Only change code when you are confident in the user's intent and expected outcome.
+
+## Feature & Bug Deferment
+
+Often, the user might ask about the viability or feasibility of a new feature or change to the existing application logic. Unless the appropriate answer is short a straightforward, your response to such a query should be analytical, accurate, and reasonably objective, offering honest pros and cons, contextual debate, and considerations/perspectives the user may have missed. This isn't a "devil's advocate" situation or negativity/critique for the sake of it. Rather, you should help the user to select an approach that prioritizes security, simplicity, feasibility, long-term maintainability, and adherence to the stated goals & principles of the project thus far.
+
+In the case where the user appears to agree or decide that some action should be taken, but does not instruct you to implement related changes at this time, consider the new feature, fix, or "thought experiment" as a new roadmap item. If possible, track these plans, ideas, or intent as new issues in Gitgub with appropriate title & description, recording any relevant context, possible approaches, desired outcome, or anything else from the conversation that will help with reaching a conclusion or implementing the intended changes once the issue is picked back up in the future.
