@@ -47,6 +47,14 @@ This early milestone is intentionally boring: it creates a local scaffold, SQLit
    - Parent login: `http://localhost:3002/auth/login`
    - Parent reviews: `http://localhost:3002/parent/reviews`
 
+7. Run regression tests:
+
+   ```sh
+   npm test
+   ```
+
+   See `docs/testing.md` for the current fixture matrix, expected outcomes, and testing architecture notes.
+
 Default seeded parent credentials come from `.env.example`:
 
 - Email: `parent@example.com`
