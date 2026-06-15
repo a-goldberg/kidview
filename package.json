@@ -7,6 +7,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
+    "test": "node --test",
+    "test:regression": "node --test test/regression.test.js",
     "pm2:start": "PM2_HOME=.pm2 pm2 startOrRestart ecosystem.config.js --only kidview",
     "pm2:restart": "PM2_HOME=.pm2 pm2 startOrRestart ecosystem.config.js --only kidview --update-env",
     "pm2:stop": "PM2_HOME=.pm2 pm2 stop kidview",
