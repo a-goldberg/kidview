@@ -41,7 +41,7 @@
             <li>
               <strong><%= child.display_name %></strong>
               <span>Profile only, not a login account</span>
-              <span>Limited policy: <%= child.allow_limited_policy || 'block' %></span>
+              <span>Limited policy: <%= displayLabel('allowLimitedPolicy', child.allow_limited_policy || 'block', displayLocale) %></span>
             </li>
           <% }) %>
         </ul>
@@ -67,7 +67,7 @@
             <li>
               <strong><%= child.display_name %></strong>
               <span>Profile only, not a login account</span>
-              <span>Limited policy: <%= child.allow_limited_policy || 'block' %>, threshold <%= Math.round(Number(child.allow_limited_min_confidence || 0.7) * 100) %>%</span>
+              <span>Limited policy: <%= displayLabel('allowLimitedPolicy', child.allow_limited_policy || 'block', displayLocale) %>, threshold <%= Math.round(Number(child.allow_limited_min_confidence || 0.7) * 100) %>%</span>
             </li>
           <% }) %>
         </ul>

@@ -10,6 +10,7 @@ const db = require('./app/db/database');
 const authRoutes = require('./app/routes/auth');
 const childRoutes = require('./app/routes/child');
 const parentRoutes = require('./app/routes/parent');
+const displayLabels = require('./app/services/displayLabels');
 
 const app = express();
 const SQLiteStore = SQLiteStoreFactory(session);
@@ -69,6 +70,9 @@ app.use(
 app.use((req, res, next) => {
   res.locals.currentParent = req.session.parentUser || null;
   res.locals.sessionCookieName = config.sessionCookieName;
+  res.locals.displayLabel = displayLabels.displayLabel;
+  res.locals.displayList = displayLabels.displayList;
+  res.locals.displayLocale = 'en';
   next();
 });
 

@@ -2,6 +2,8 @@
 
 This glossary lists the values KidView currently stores or displays in parent search audit and review flows. Keep this vocabulary small and parent-readable where possible. Internal storage codes are included here so future UI labels can map them to clearer language.
 
+Parent-facing EJS views should display these values through `app/services/displayLabels.js` instead of printing raw storage codes. The current map is English-only, but it is structured by locale so future localization can add alternate labels without changing stored audit or decision values.
+
 ## Search Audit Fields
 
 | Field | Possible values | Meaning |

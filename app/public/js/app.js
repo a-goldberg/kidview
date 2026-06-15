@@ -56,7 +56,7 @@ document.addEventListener('submit', async (event) => {
     const currentDecision = form.querySelector('[data-decision-current]');
 
     if (currentDecision && result.decision) {
-      currentDecision.textContent = result.decision;
+      currentDecision.textContent = result.decisionLabel || result.decision;
     }
 
     setFormStatus(form, result.message || 'Saved.', 'saved');

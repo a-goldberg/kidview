@@ -13,6 +13,7 @@ const {
   upsertChannelDecision,
   upsertVideoDecision
 } = require('../services/decisionService');
+const { displayLabel } = require('../services/displayLabels');
 
 const router = express.Router();
 
@@ -102,6 +103,7 @@ router.post('/reviews/videos/:videoId/decision', requireParent, (req, res) => {
 
   sendDecisionResponse(req, res, '/parent/reviews', {
     decision: req.body.decision,
+    decisionLabel: displayLabel('finalDecision', req.body.decision),
     removeCard: true,
     message: 'Video decision saved.'
   });
@@ -175,6 +177,7 @@ router.post('/decisions/videos/:videoId', requireParent, (req, res) => {
     `/parent/decisions?kind=${encodeURIComponent(req.body.kind || 'all')}&search=${encodeURIComponent(req.body.search || '')}&sort=${encodeURIComponent(req.body.sort || 'updated_newest')}`,
     {
       decision: req.body.decision,
+      decisionLabel: displayLabel('finalDecision', req.body.decision),
       message: 'Video decision updated.'
     }
   );
@@ -191,6 +194,7 @@ router.post('/reviews/channels/:channelId/decision', requireParent, (req, res) =
 
   sendDecisionResponse(req, res, '/parent/reviews', {
     decision: req.body.decision,
+    decisionLabel: displayLabel('channelDecision', req.body.decision),
     removeCard: false,
     message: `Channel decision saved. Re-scored ${remoderatedCount} known video${remoderatedCount === 1 ? '' : 's'}.`
   });
@@ -211,6 +215,7 @@ router.post('/decisions/channels/:channelId', requireParent, (req, res) => {
     `/parent/decisions?kind=${encodeURIComponent(req.body.kind || 'all')}&search=${encodeURIComponent(req.body.search || '')}&sort=${encodeURIComponent(req.body.sort || 'updated_newest')}`,
     {
       decision: req.body.decision,
+      decisionLabel: displayLabel('channelDecision', req.body.decision),
       message: `Channel decision updated. Re-scored ${remoderatedCount} known video${remoderatedCount === 1 ? '' : 's'}.`
     }
   );

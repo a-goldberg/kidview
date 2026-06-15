@@ -18,7 +18,7 @@
   <section class="dashboard-grid" aria-label="Search summary">
     <article class="panel">
       <h2>Source</h2>
-      <p class="muted"><%= audit.event.source_mode %></p>
+      <p class="muted"><%= displayLabel('sourceMode', audit.event.source_mode, displayLocale) %></p>
     </article>
     <article class="panel">
       <h2>Child profile</h2>
@@ -49,7 +49,7 @@
             <article class="history-row search-audit-row">
               <div class="history-main">
                 <p class="category">
-                  #<%= candidate.source_rank || '?' %> · <%= candidate.final_decision %> · <%= candidate.shown_to_child ? 'shown' : 'hidden' %>
+                  #<%= candidate.source_rank || '?' %> · <%= displayLabel('finalDecision', candidate.final_decision, displayLocale) %> · <%= candidate.shown_to_child ? 'Shown' : 'Hidden' %>
                 </p>
                 <h3><%= candidate.title %></h3>
                 <p class="muted">
@@ -66,31 +66,31 @@
                   <p class="muted"><strong>Hard block:</strong> <%= candidate.hard_block_reason %></p>
                 <% } %>
                 <% if (candidate.parent_decision_affected) { %>
-                  <p class="muted"><strong>Parent decision involved:</strong> <%= candidate.parent_decision_source || 'household decision' %></p>
+                  <p class="muted"><strong>Parent decision involved:</strong> <%= displayLabel('parentDecisionSource', candidate.parent_decision_source || 'household', displayLocale) %></p>
                 <% } %>
                 <% if (candidate.content_tags.length || candidate.quality_tags.length || candidate.risk_tags.length) { %>
                   <ul class="label-list compact-labels">
                     <% candidate.content_tags.forEach((tag) => { %>
-                      <li class="content-tags"><%= tag %></li>
+                      <li class="content-tags"><%= displayLabel('contentTag', tag, displayLocale) %></li>
                     <% }) %>
                     <% candidate.quality_tags.forEach((tag) => { %>
-                      <li><%= tag %></li>
+                      <li><%= displayLabel('qualityTag', tag, displayLocale) %></li>
                     <% }) %>
                     <% candidate.risk_tags.forEach((tag) => { %>
-                      <li class="risk-tags"><%= tag %></li>
+                      <li class="risk-tags"><%= displayLabel('riskTag', tag, displayLocale) %></li>
                     <% }) %>
                   </ul>
                 <% } %>
               </div>
               <div class="search-audit-metrics">
-                <p><strong>Source:</strong> <%= candidate.moderation_source || 'unknown' %></p>
-                <p><strong>Parent Override:</strong> <%= candidate.parent_decision_affected ? 'yes' : 'no' %></p>
+                <p><strong>Source:</strong> <%= displayLabel('moderationSource', candidate.moderation_source || 'unknown', displayLocale) %></p>
+                <p><strong>Parent Override:</strong> <%= candidate.parent_decision_affected ? 'Yes' : 'No' %></p>
                 <% if (candidate.visibility_reason_code) { %>
-                  <p><strong>Audit Reason:</strong> <%= candidate.visibility_reason_code %></p>
+                  <p><strong>Audit Reason:</strong> <%= displayLabel('visibilityReasonCode', candidate.visibility_reason_code, displayLocale) %></p>
                 <% } %>
-                <p><strong>Review Queue:</strong> <%= candidate.review_queue_state || 'none' %></p>
+                <p><strong>Review Queue:</strong> <%= displayLabel('reviewQueueState', candidate.review_queue_state || 'none', displayLocale) %></p>
                 <% if (candidate.review_queue_reason_code) { %>
-                  <p><strong>Queue Reason:</strong> <%= candidate.review_queue_reason_code %></p>
+                  <p><strong>Queue Reason:</strong> <%= displayLabel('reviewQueueReasonCode', candidate.review_queue_reason_code, displayLocale) %></p>
                 <% } %>
                 <div class="button-row">
                   <% if (candidate.review_link && (candidate.review_queue_state === 'created_pending' || candidate.review_queue_state === 'matched_pending')) { %>

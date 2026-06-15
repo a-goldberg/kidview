@@ -20,7 +20,7 @@
       <select name="source">
         <option value="all" <%= audit.filters.source === 'all' ? 'selected' : '' %>>All sources</option>
         <% audit.sources.forEach((source) => { %>
-          <option value="<%= source %>" <%= audit.filters.source === source ? 'selected' : '' %>><%= source %></option>
+          <option value="<%= source %>" <%= audit.filters.source === source ? 'selected' : '' %>><%= displayLabel('sourceMode', source, displayLocale) %></option>
         <% }) %>
       </select>
     </label>
@@ -41,7 +41,7 @@
       <% audit.searches.forEach((event) => { %>
         <article class="history-row search-audit-row">
           <div class="history-main">
-            <p class="category"><%= event.source_mode %> · <%= event.child_profile_name || 'No child profile' %></p>
+            <p class="category"><%= displayLabel('sourceMode', event.source_mode, displayLocale) %> · <%= event.child_profile_name || 'No child profile' %></p>
             <h3><%= event.query %></h3>
             <p class="muted"><%= event.created_at %></p>
           </div>

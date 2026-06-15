@@ -86,7 +86,7 @@
         <% history.channels.forEach((channel) => { %>
           <article class="history-row">
             <div class="history-main">
-              <p class="category"><%= channel.source %></p>
+              <p class="category"><%= displayLabel('sourceMode', channel.source, displayLocale) %></p>
               <h3><%= channel.title %></h3>
               <p class="muted"><%= channel.external_id %></p>
               <p class="muted compact-note"><strong>Parent note:</strong> <%= channel.parent_facing_reason || 'No parent note.' %></p>

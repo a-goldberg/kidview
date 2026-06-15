@@ -64,7 +64,7 @@
       <% reviewQueue.videos.forEach((video) => { %>
         <article class="review-card" id="video-<%= video.id %>" data-decision-card>
           <div>
-            <p class="category"><%= video.primary_category %> · <%= Math.round(video.duration_seconds / 60) %> min · <%= video.queue_status %></p>
+            <p class="category"><%= video.primary_category %> · <%= Math.round(video.duration_seconds / 60) %> min · <%= displayLabel('finalDecision', video.queue_status, displayLocale) %></p>
             <h3><%= video.title %></h3>
             <p class="muted"><%= video.channel_title %></p>
             <ul class="label-list">
@@ -74,10 +74,10 @@
               <% if (video.is_short) { %><li>Short</li><% } %>
               <% if (video.live_status === 'live') { %><li>Live now</li><% } %>
               <% if (video.live_status === 'upcoming') { %><li>Upcoming live</li><% } %>
-              <% if (video.live_status === 'completed_live') { %><li>Completed live</li><% } %>
+              <% if (video.live_status === 'completed_live') { %><li><%= displayLabel('liveStatus', video.live_status, displayLocale) %></li><% } %>
             </ul>
             <% if (video.channel_decision) { %>
-              <p class="muted">Channel decision: <strong><%= video.channel_decision %></strong></p>
+              <p class="muted">Channel decision: <strong><%= displayLabel('channelDecision', video.channel_decision, displayLocale) %></strong></p>
             <% } %>
             <details class="info-disclosure">
               <summary>Details</summary>
@@ -88,13 +88,13 @@
               <% if (video.content_tags.length || video.quality_tags.length || video.risk_tags.length) { %>
                 <ul class="label-list">
                   <% video.content_tags.forEach((tag) => { %>
-                    <li class="content-tags"><%= tag %></li>
+                    <li class="content-tags"><%= displayLabel('contentTag', tag, displayLocale) %></li>
                   <% }) %>
                   <% video.quality_tags.forEach((tag) => { %>
-                    <li class="quality-tags"><%= tag %></li>
+                    <li class="quality-tags"><%= displayLabel('qualityTag', tag, displayLocale) %></li>
                   <% }) %>
                   <% video.risk_tags.forEach((tag) => { %>
-                    <li class="risk-tags"><%= tag %></li>
+                    <li class="risk-tags"><%= displayLabel('riskTag', tag, displayLocale) %></li>
                   <% }) %>
                 </ul>
               <% } %>
@@ -136,7 +136,7 @@
           <form class="channel-form" action="/parent/reviews/channels/<%= channel.id %>/decision" method="post" data-async-decision>
             <strong><%= channel.title %></strong>
             <span class="muted"><%= channel.pending_video_count %> pending video<%= channel.pending_video_count === 1 ? '' : 's' %></span>
-            <span class="muted">Current: <strong data-decision-current><%= channel.decision || 'none' %></strong></span>
+            <span class="muted">Current: <strong data-decision-current><%= displayLabel('channelDecision', channel.decision || 'none', displayLocale) %></strong></span>
             <input name="reason" placeholder="Parent note" value="<%= channel.parent_facing_reason || '' %>">
             <div class="button-row">
               <button class="primary-button" type="submit" name="decision" value="approved">Approve</button>

@@ -216,6 +216,8 @@ When `limited_frequency` is eventually selected for a child profile, KidView all
 
 Search audit detail pages record profile-policy reasons for limited videos, such as `shown_allow_limited_profile_policy` and `hidden_allow_limited_profile_policy`.
 
+Parent-facing pages translate stored moderation and audit codes through `app/services/displayLabels.js`. Keep database values stable and inspectable for debugging, then add or adjust parent-readable labels in that helper. The helper is locale-shaped so future localization can add another locale map without changing the underlying decision or audit schema.
+
 Live status is tracked as `none`, `upcoming`, `live`, or `completed_live`. In v1, `live` and `upcoming` streams are hard-blocked because KidView cannot assess changing real-time content before the child watches it, and approved channels or durable video approvals do not override that block. These hard-blocked streams do not create normal parent review queue items by default. Completed livestream recordings may be reviewed or allowed later, especially when they come from trusted channels and the rest of the score is strong.
 
 ## Parent Review Queue Model
