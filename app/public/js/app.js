@@ -21,9 +21,13 @@ async function submitDecisionForm(form, submitter) {
   setFormStatus(form, "Saving...", "pending");
 
   const action =
-    submitter && submitter.formAction ? submitter.formAction : form.action;
+    submitter && submitter.getAttribute("formaction")
+      ? submitter.getAttribute("formaction")
+      : form.action;
   const method =
-    submitter && submitter.formMethod ? submitter.formMethod : form.method;
+    submitter && submitter.getAttribute("formmethod")
+      ? submitter.getAttribute("formmethod")
+      : form.method;
 
   const response = await fetch(action, {
     method: method || "POST",
