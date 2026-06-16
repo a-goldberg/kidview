@@ -113,6 +113,7 @@
             <div class="button-row">
               <button class="secondary-button" type="submit" name="decision" value="allow_limited">Allow limited</button>
               <button class="secondary-button" type="submit" name="decision" value="review_required">Review required</button>
+              <button class="secondary-button" type="submit" formaction="/parent/reviews/videos/<%= video.id %>/ignore" data-confirm="Ignore removes this item from the review queue without allowing or blocking the video. If it appears in a future search, it may return to review.">Ignore</button>
             </div>
             <p class="decision-status" role="status"></p>
           </form>

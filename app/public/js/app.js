@@ -20,8 +20,11 @@ async function submitDecisionForm(form, submitter) {
 
   setFormStatus(form, 'Saving...', 'pending');
 
-  const response = await fetch(form.action, {
-    method: form.method || 'POST',
+  const action = submitter && submitter.formAction ? submitter.formAction : form.action;
+  const method = submitter && submitter.formMethod ? submitter.formMethod : form.method;
+
+  const response = await fetch(action, {
+    method: method || 'POST',
     headers: {
       accept: 'application/json',
       'content-type': 'application/x-www-form-urlencoded'

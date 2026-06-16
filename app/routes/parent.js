@@ -10,6 +10,7 @@ const {
   bulkUpsertVideoDecisions,
   clearReviewChannels,
   clearReviewVideos,
+  ignoreReviewVideo,
   upsertChannelDecision,
   upsertVideoDecision
 } = require('../services/decisionService');
@@ -106,6 +107,21 @@ router.post('/reviews/videos/:videoId/decision', requireParent, (req, res) => {
     decisionLabel: displayLabel('finalDecision', req.body.decision),
     removeCard: true,
     message: 'Video decision saved.'
+  });
+});
+
+router.post('/reviews/videos/:videoId/ignore', requireParent, (req, res) => {
+  const ignoredCount = ignoreReviewVideo({
+    householdId: req.session.parentUser.householdId,
+    parentUserId: req.session.parentUser.id,
+    videoId: Number(req.params.videoId)
+  });
+
+  sendDecisionResponse(req, res, '/parent/reviews', {
+    removeCard: ignoredCount > 0,
+    message: ignoredCount > 0
+      ? 'Video ignored and removed from this review queue.'
+      : 'No pending review item was found for this video.'
   });
 });
 

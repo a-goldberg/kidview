@@ -239,7 +239,7 @@ KidView keeps global source data separate from household workflow state:
 
 The parent review page shows only pending review items whose current moderation decision is `allow_limited`, `review`, or `unknown`. Hard blocks are not parent-actionable queue items by default: Shorts, non-embeddable videos, live/upcoming streams, blocked channels, and durable household block decisions are filtered or resolved outside the normal queue.
 
-Approving or blocking a video resolves the pending review item and writes the durable household video decision. Clearing the queue marks pending items as `dismissed` for the current household only; it does not delete videos, channels, moderation reviews, search history, or parent decisions. If a child searches for the same dismissed video again later, KidView may create a new pending review item unless a durable household video/channel decision already applies.
+Approving or blocking a video resolves the pending review item and writes the durable household video decision. Ignoring a video or clearing the queue marks pending items as `dismissed` for the current household only; it does not delete videos, channels, moderation reviews, search history, or parent decisions. If a child searches for the same dismissed video again later, KidView may create a new pending review item unless a durable household video/channel decision already applies.
 
 For the parent-facing vocabulary behind search audit, review queue, decision, and tag values, see [KidView Audit Vocabulary](docs/audit-vocabulary.md).
 

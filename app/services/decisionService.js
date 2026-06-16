@@ -143,6 +143,29 @@ function clearReviewVideos({ householdId, parentUserId, videoIds }) {
   ).run(parentUserId, householdId, ...ids).changes;
 }
 
+function ignoreReviewVideo({ householdId, parentUserId, videoId }) {
+  const id = Number(videoId);
+
+  if (!id) {
+    return 0;
+  }
+
+  // Ignore is queue-only: it removes the current pending item without creating
+  // a durable allow/block/review decision for future searches.
+  return db.prepare(
+    `UPDATE household_review_items
+     SET
+      status = 'dismissed',
+      reason_code = 'parent_ignored',
+      resolved_at = CURRENT_TIMESTAMP,
+      resolved_by_parent_user_id = ?,
+      updated_at = CURRENT_TIMESTAMP
+     WHERE household_id = ?
+      AND status = 'pending'
+      AND video_id = ?`
+  ).run(parentUserId, householdId, id).changes;
+}
+
 function clearReviewChannels({ householdId, parentUserId, channelIds }) {
   const ids = channelIds.map(Number).filter(Boolean);
 
@@ -181,6 +204,7 @@ module.exports = {
   bulkUpsertVideoDecisions,
   clearReviewChannels,
   clearReviewVideos,
+  ignoreReviewVideo,
   upsertVideoDecision,
   upsertChannelDecision
 };

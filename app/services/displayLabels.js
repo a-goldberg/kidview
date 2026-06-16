@@ -52,6 +52,7 @@ const EN_LABELS = {
     "durable_video_decision:block": "Previously blocked by parent",
     "durable_channel_decision:blocked": "Channel blocked by parent",
     parent_cleared: "Cleared by parent",
+    parent_ignored: "Ignored by parent",
     parent_cleared_channel: "Channel queue cleared by parent",
     queue_noise_cleanup: "Cleaned up from old queue rules",
   },

@@ -129,6 +129,7 @@ These codes appear in `search_event_candidates.review_queue_reason_code` and/or 
 | `source_filter:not_embeddable` | Source candidate was not persisted because it was not embeddable. |
 | `parent_decision:<decision>` | Parent action resolved a pending review item through a video decision. |
 | `parent_cleared` | Parent manually cleared pending video items from the review queue. |
+| `parent_ignored` | Parent ignored one pending video item without making a durable video decision. |
 | `parent_cleared_channel` | Parent cleared pending review videos for unreviewed visible channels. |
 | `queue_noise_cleanup` | Migration cleanup expired queue items that no longer matched current queue rules. |
 
