@@ -314,6 +314,14 @@ input:focus {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+.dashboard-3-col {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.dashboard-4-col {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .parent-dashboard-nav {
   display: flex;
   flex-wrap: wrap;

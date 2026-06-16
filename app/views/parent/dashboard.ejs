@@ -10,7 +10,7 @@
 
   <%- include('dashboard-nav', { activeSection: 'overview' }) %>
 
-  <section class="dashboard-grid parent-overview-grid" aria-label="Dashboard summary">
+  <section class="dashboard-grid dashboard-3-col parent-overview-grid" aria-label="Dashboard summary">
     <article class="panel dashboard-summary-card">
       <p class="category">Needs attention</p>
       <h2><%= dashboard.pendingReviewCount %> pending video<%= dashboard.pendingReviewCount === 1 ? '' : 's' %></h2>
@@ -31,27 +31,32 @@
       <p class="muted">Find and adjust past video or channel choices.</p>
       <a class="secondary-button small-button" href="/parent/decisions">Open decisions</a>
     </article>
-
-    <article class="panel">
-      <p class="category">Profiles</p>
-      <h2>Child profiles</h2>
-      <% if (dashboard.children.length) { %>
-        <ul class="simple-list">
-          <% dashboard.children.forEach((child) => { %>
-            <li>
-              <strong><%= child.display_name %></strong>
-              <span>Profile only, not a login account</span>
-              <span>Limited policy: <%= displayLabel('allowLimitedPolicy', child.allow_limited_policy || 'block', displayLocale) %></span>
-            </li>
-          <% }) %>
-        </ul>
-      <% } else { %>
-        <p class="muted">No child profiles yet.</p>
-      <% } %>
-    </article>
   </section>
 
   <section class="dashboard-workspace-grid" aria-label="Parent dashboard details">
+    <article class="panel" id="moderation-policy">
+      <div class="section-heading-row">
+        <div>
+          <p class="eyebrow">Household Policy</p>
+        </div>
+      </div>
+      <ul class="simple-list policy-list">
+        <li>
+          <strong>Results cap</strong>
+          
+          <span>Child search shows at most three videos.</span>
+        </li>
+        <li>
+          <strong>Child-visible decisions</strong>
+          <span>Only allow is child-visible by default. Child profile allow_limited policy is currently set up for future controls.</span>
+        </li>
+        <li>
+          <strong>Hard blocks</strong>
+          <span>Shorts, live/upcoming streams, non-embeddable videos, and blocked channels stay out of child results.</span>
+        </li>
+      </ul>
+    </article>
+    
     <article class="panel" id="child-profiles">
       <div class="section-heading-row">
         <div>
@@ -72,30 +77,6 @@
           <% }) %>
         </ul>
       <% } %>
-    </article>
-
-    <article class="panel" id="moderation-policy">
-      <div class="section-heading-row">
-        <div>
-          <p class="eyebrow">Moderation policy</p>
-          <h2>Current child visibility rules</h2>
-        </div>
-      </div>
-      <ul class="simple-list policy-list">
-        <li>
-          <strong>Results cap</strong>
-          <span>Child search shows at most three videos.</span>
-        </li>
-        <li>
-          <strong>Child-visible decisions</strong>
-          <span>Only allow is child-visible by default. Child profile allow_limited policy is currently set up for future controls.</span>
-        </li>
-        <li>
-          <strong>Hard blocks</strong>
-          <span>Shorts, live/upcoming streams, non-embeddable videos, and blocked channels stay out of child results.</span>
-        </li>
-      </ul>
-      <a class="secondary-button small-button" href="/parent/searches">Audit recent searches</a>
     </article>
 
     <article class="panel">
