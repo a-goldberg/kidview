@@ -343,6 +343,96 @@ test("policy configuration rejects invalid limits and policy values", () => {
   );
 });
 
+test("policy management creates and updates household profiles", () => {
+  const createdPolicy = policyService.createPolicyProfile({
+    householdId: household().id,
+    name: "Focused learning",
+    description: "A smaller result set for focused searches.",
+    maxResults: 2,
+  });
+  const createdChild = policyService.createChildProfile({
+    householdId: household().id,
+    policyProfileId: createdPolicy.id,
+    displayName: "Policy Test Child",
+    birthYear: 2019,
+    allowLimitedPolicy: "review",
+    allowLimitedMinConfidence: 0.75,
+    dailySearchLimit: 8,
+    dailyVideoWatchLimit: null,
+  });
+
+  assert.equal(createdPolicy.name, "Focused learning");
+  assert.equal(createdChild.policy_profile_id, createdPolicy.id);
+  assert.equal(createdChild.daily_video_watch_limit, null);
+
+  const updatedPolicy = policyService.updatePolicyProfile({
+    householdId: household().id,
+    policyProfileId: createdPolicy.id,
+    name: "Focused search",
+    description: "One result at a time.",
+    maxResults: 1,
+  });
+  const updatedChild = policyService.updateChildProfile({
+    householdId: household().id,
+    childProfileId: createdChild.id,
+    policyProfileId: createdPolicy.id,
+    displayName: "Updated Test Child",
+    birthYear: "",
+    allowLimitedPolicy: "limited_frequency",
+    allowLimitedMinConfidence: 0.8,
+    dailySearchLimit: "",
+    dailyVideoWatchLimit: 4,
+  });
+  const management = policyService.getPolicyManagement(household().id);
+  const managedPolicy = management.policies.find((policy) => policy.id === createdPolicy.id);
+  const managedChild = management.children.find((child) => child.id === createdChild.id);
+
+  assert.equal(updatedPolicy.name, "Focused search");
+  assert.equal(updatedPolicy.max_results, 1);
+  assert.equal(updatedChild.display_name, "Updated Test Child");
+  assert.equal(updatedChild.birth_year, null);
+  assert.equal(updatedChild.daily_search_limit, null);
+  assert.equal(managedPolicy.child_count, 1);
+  assert.equal(managedPolicy.child_names, "Updated Test Child");
+  assert.equal(managedChild.contentPosture.label, "Balanced");
+});
+
+test("policy management rejects duplicate names and cross-household assignment", () => {
+  const profile = policyProfile();
+  const otherHousehold = db
+    .prepare("INSERT INTO households (name) VALUES ('Other Household') RETURNING id")
+    .get();
+  const otherPolicy = policyService.createPolicyProfile({
+    householdId: otherHousehold.id,
+    name: "Other policy",
+    description: "Not available to the demo household.",
+    maxResults: 3,
+  });
+
+  assert.throws(
+    () => policyService.createPolicyProfile({
+      householdId: household().id,
+      name: profile.name.toUpperCase(),
+      description: "Duplicate name.",
+      maxResults: 3,
+    }),
+    /unique within a household/,
+  );
+  assert.throws(
+    () => policyService.createChildProfile({
+      householdId: household().id,
+      policyProfileId: otherPolicy.id,
+      displayName: "Wrong Household Child",
+      birthYear: null,
+      allowLimitedPolicy: "block",
+      allowLimitedMinConfidence: 0.7,
+      dailySearchLimit: null,
+      dailyVideoWatchLimit: null,
+    }),
+    /from this household/,
+  );
+});
+
 test("allowed result appears for a seeded safe search", async () => {
   const response = await childSearch("otters");
 
