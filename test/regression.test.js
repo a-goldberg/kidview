@@ -49,6 +49,7 @@ withMutedConsole(() => {
 const db = require("../app/db/database");
 const config = require("../app/config");
 const decisionService = require("../app/services/decisionService");
+const policyService = require("../app/services/policyService");
 const searchService = require("../app/services/searchService");
 const youtubeSourceService = require("../app/services/youtubeSourceService");
 
@@ -69,6 +70,10 @@ function childProfile() {
 
 function parentUser() {
   return db.prepare("SELECT * FROM parent_users LIMIT 1").get();
+}
+
+function policyProfile() {
+  return db.prepare("SELECT * FROM policy_profiles LIMIT 1").get();
 }
 
 async function childSearch(query) {
@@ -219,6 +224,85 @@ function insertAllowedCapFixtures() {
   }
 }
 
+function insertStoredModerationReview(videoId, decision, confidenceScore = 0.8) {
+  db.prepare(
+    `INSERT INTO moderation_reviews (
+      household_id,
+      video_id,
+      status,
+      decision,
+      confidence_score,
+      primary_category,
+      parent_explanation
+    )
+    VALUES (?, ?, ?, ?, ?, 'Science', 'Regression moderation result.')
+    ON CONFLICT(household_id, video_id) DO UPDATE SET
+      status = excluded.status,
+      decision = excluded.decision,
+      confidence_score = excluded.confidence_score,
+      primary_category = excluded.primary_category,
+      parent_explanation = excluded.parent_explanation`,
+  ).run(household().id, videoId, decision, decision, confidenceScore);
+}
+
+test("policy configuration defaults usage limits to unlimited", () => {
+  const child = childProfile();
+  let policy = policyService.getChildPolicy({
+    householdId: child.household_id,
+    childProfileId: child.id,
+  });
+
+  assert.equal(policy.maxResults, 3);
+  assert.equal(policy.allowLimitedPolicy, "block");
+  assert.equal(policy.dailySearchLimit, null);
+  assert.equal(policy.dailyVideoWatchLimit, null);
+
+  policy = policyService.updateChildPolicy({
+    householdId: child.household_id,
+    childProfileId: child.id,
+    allowLimitedPolicy: "block",
+    allowLimitedMinConfidence: 0.7,
+    dailySearchLimit: 12,
+    dailyVideoWatchLimit: 5,
+  });
+
+  assert.equal(policy.dailySearchLimit, 12);
+  assert.equal(policy.dailyVideoWatchLimit, 5);
+
+  policyService.updateChildPolicy({
+    householdId: child.household_id,
+    childProfileId: child.id,
+    allowLimitedPolicy: "block",
+    allowLimitedMinConfidence: 0.7,
+    dailySearchLimit: null,
+    dailyVideoWatchLimit: null,
+  });
+});
+
+test("policy configuration writes stay household-scoped", () => {
+  const child = childProfile();
+  const profile = policyProfile();
+
+  const childResult = policyService.updateChildPolicy({
+    householdId: child.household_id + 999,
+    childProfileId: child.id,
+    allowLimitedPolicy: "allow",
+    allowLimitedMinConfidence: 0.5,
+    dailySearchLimit: 1,
+    dailyVideoWatchLimit: 1,
+  });
+  const profileResult = policyService.updatePolicyProfile({
+    householdId: profile.household_id + 999,
+    policyProfileId: profile.id,
+    maxResults: 1,
+  });
+
+  assert.equal(childResult, null);
+  assert.equal(profileResult, null);
+  assert.equal(childProfile().allow_limited_policy, "block");
+  assert.equal(policyProfile().max_results, 3);
+});
+
 test("allowed result appears for a seeded safe search", async () => {
   const response = await childSearch("otters");
 
@@ -239,6 +323,27 @@ test("more than three allowed results are capped", async () => {
     response.results.map((result) => result.decision),
     ["allow", "allow", "allow"],
   );
+});
+
+test("policy profile result cap controls child search", async () => {
+  const profile = policyProfile();
+
+  policyService.updatePolicyProfile({
+    householdId: household().id,
+    policyProfileId: profile.id,
+    maxResults: 1,
+  });
+
+  try {
+    const response = await childSearch("capmatrix");
+    assert.equal(response.results.length, 1);
+  } finally {
+    policyService.updatePolicyProfile({
+      householdId: household().id,
+      policyProfileId: profile.id,
+      maxResults: 3,
+    });
+  }
 });
 
 test("parent video allow overrides moderation for a specific video", async () => {
@@ -286,6 +391,21 @@ test("blocked channel hard-blocks matching results", async () => {
   assert.match(candidate.hard_block_reason, /blocked/i);
 });
 
+test("specific parent video allow overrides a blocked channel", async () => {
+  upsertVideoDecision("bad11111111", "allow", "Specific household video exception.");
+
+  const response = await childSearch("parkour");
+  const event = latestSearchEvent("parkour");
+  const candidate = auditCandidate(event.id, "Parkour");
+
+  assert.ok(response.results.some((result) => result.title.includes("Parkour")));
+  assert.equal(candidate.final_decision, "allow");
+  assert.equal(candidate.shown_to_child, 1);
+  assert.equal(candidate.moderation_source, "parent_video_decision");
+  assert.equal(candidate.parent_decision_source, "video");
+  assert.equal(candidate.visibility_reason_code, "shown_parent_video_override");
+});
+
 test("review-first channel sends matching videos to parent review", async () => {
   await childSearch("teen drama");
   const event = latestSearchEvent("teen drama");
@@ -326,6 +446,19 @@ test("Shorts and live or upcoming streams are blocked", async () => {
 
   assert.equal(candidate.final_decision, "block");
   assert.match(candidate.hard_block_reason, /upcoming/i);
+});
+
+test("specific parent video allow cannot override format guardrails", async () => {
+  upsertVideoDecision("sH8oR3t5y1u", "allow", "Attempted Short exception.");
+
+  const response = await childSearch("strict schedule");
+  const event = latestSearchEvent("strict schedule");
+  const candidate = auditCandidate(event.id, "strict schedule");
+
+  assert.equal(response.results.some((result) => result.title.includes("strict schedule")), false);
+  assert.equal(candidate.final_decision, "block");
+  assert.equal(candidate.moderation_source, "hard_filter");
+  assert.match(candidate.hard_block_reason, /Shorts/i);
 });
 
 test("completed-live recordings require strong trusted-channel signals before allowing", async () => {
@@ -376,6 +509,53 @@ test("allow_limited follows child profile policy", async () => {
     response.results.some((result) => result.title.includes("Basic Fractions")),
     "limited_frequency should allow one qualifying allow_limited video when slots are open.",
   );
+
+  setChildAllowLimitedPolicy("block");
+});
+
+test("allow_limited review routing follows child profile policy", async () => {
+  const video = insertVideo({
+    externalId: "limited-policy-matrix",
+    title: "Limited Policy Matrix Candidate",
+    description: "A candidate used to verify limited policy routing.",
+  });
+  insertStoredModerationReview(video.id, "allow_limited", 0.8);
+
+  setChildAllowLimitedPolicy("block");
+  await childSearch("limited policy matrix");
+  let event = latestSearchEvent("limited policy matrix");
+  let candidate = auditCandidate(event.id, "Limited Policy Matrix");
+
+  assert.equal(candidate.shown_to_child, 0);
+  assert.equal(candidate.review_queue_state, "none");
+  assert.equal(candidate.review_queue_reason_code, "profile_policy:block");
+
+  setChildAllowLimitedPolicy("review");
+  await childSearch("limited policy matrix");
+  event = latestSearchEvent("limited policy matrix");
+  candidate = auditCandidate(event.id, "Limited Policy Matrix");
+
+  assert.equal(candidate.shown_to_child, 0);
+  assert.equal(candidate.review_queue_state, "created_pending");
+  assert.equal(candidate.review_queue_reason_code, "allow_limited");
+
+  setChildAllowLimitedPolicy("allow");
+  await childSearch("limited policy matrix");
+  event = latestSearchEvent("limited policy matrix");
+  candidate = auditCandidate(event.id, "Limited Policy Matrix");
+
+  assert.equal(candidate.shown_to_child, 1);
+  assert.equal(candidate.review_queue_state, "resolved");
+  assert.equal(candidate.review_queue_reason_code, "profile_policy:allow");
+
+  setChildAllowLimitedPolicy("limited_frequency", 0.7);
+  const response = await childSearch("limited policy matrix");
+  event = latestSearchEvent("limited policy matrix");
+  candidate = auditCandidate(event.id, "Limited Policy Matrix");
+
+  assert.equal(response.results.filter((result) => result.decision === "allow_limited").length, 1);
+  assert.equal(candidate.review_queue_state, "none");
+  assert.equal(candidate.review_queue_reason_code, "profile_policy:limited_frequency");
 
   setChildAllowLimitedPolicy("block");
 });

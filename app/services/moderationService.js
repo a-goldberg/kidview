@@ -1,4 +1,9 @@
 const db = require("../db/database");
+const {
+  FORMAT_GUARDRAILS,
+  getChildPolicy,
+  shouldQueueForReview,
+} = require("./policyService");
 
 const ICON_PATHS = {
   animals: "/icons/animals.svg",
@@ -26,20 +31,6 @@ const OFFICIAL_CHANNEL_PATTERN =
   /official|pbs|smithsonian|museum|national geographic|nasa|studio|pixar|science|academy|library|university|bbc|nasa/i;
 const UNKNOWN_CREATOR_PATTERN =
   /vlog|funzone|gamer|gaming|clips|squad|hyper|99|z$/i;
-const REVIEW_QUEUE_DECISIONS = new Set([
-  "allow_limited",
-  "review",
-  "unknown",
-]);
-const DEFAULT_ALLOW_LIMITED_POLICY = "block";
-const DEFAULT_ALLOW_LIMITED_MIN_CONFIDENCE = 0.7;
-const ALLOW_LIMITED_POLICIES = new Set([
-  "block",
-  "review",
-  "allow",
-  "limited_frequency",
-]);
-
 function liveStatusFor(candidate) {
   return candidate.liveStatus || (candidate.isLivestream ? "completed_live" : "none");
 }
@@ -119,34 +110,6 @@ function parseLabels(labelsJson) {
   }
 }
 
-function getChildAllowLimitedPolicy({ householdId, childProfileId }) {
-  if (!householdId || !childProfileId) {
-    return {
-      allowLimitedPolicy: DEFAULT_ALLOW_LIMITED_POLICY,
-      allowLimitedMinConfidence: DEFAULT_ALLOW_LIMITED_MIN_CONFIDENCE,
-    };
-  }
-
-  const profile = db.prepare(
-    `SELECT allow_limited_policy, allow_limited_min_confidence
-     FROM child_profiles
-     WHERE household_id = ?
-      AND id = ?`,
-  ).get(householdId, childProfileId);
-  const policy = profile && ALLOW_LIMITED_POLICIES.has(profile.allow_limited_policy)
-    ? profile.allow_limited_policy
-    : DEFAULT_ALLOW_LIMITED_POLICY;
-  const minConfidence = Number(profile && profile.allow_limited_min_confidence);
-
-  return {
-    allowLimitedPolicy: policy,
-    allowLimitedMinConfidence:
-      Number.isFinite(minConfidence) && minConfidence >= 0 && minConfidence <= 1
-        ? minConfidence
-        : DEFAULT_ALLOW_LIMITED_MIN_CONFIDENCE,
-  };
-}
-
 function ageInDays(publishedAt, now = new Date()) {
   const published = new Date(publishedAt);
 
@@ -188,8 +151,8 @@ function hasUnknownChannel(channelDecision) {
   return !channelDecision;
 }
 
-function hardFilter(candidate, channelDecision) {
-  if (candidate.isShort) {
+function formatHardFilter(candidate) {
+  if (candidate.isShort && FORMAT_GUARDRAILS.shorts === "block") {
     return {
       decision: "block",
       reason: "Filtered because Shorts are not allowed for child search.",
@@ -199,22 +162,15 @@ function hardFilter(candidate, channelDecision) {
 
   const liveStatus = liveStatusFor(candidate);
 
-  if (liveStatus === "live" || liveStatus === "upcoming") {
+  if (
+    (liveStatus === "live" && FORMAT_GUARDRAILS.live === "block") ||
+    (liveStatus === "upcoming" && FORMAT_GUARDRAILS.upcoming === "block")
+  ) {
     return {
       decision: "block",
       reason: `Filtered because ${liveStatus === "live" ? "live" : "upcoming"} streams cannot be assessed before child viewing.`,
       riskTags: [liveStatus],
       skipReviewQueue: true,
-    };
-  }
-
-  if (channelDecision && channelDecision.decision === "blocked") {
-    return {
-      decision: "block",
-      reason:
-        channelDecision.parent_facing_reason ||
-        "Blocked because this household blocked the channel.",
-      riskTags: ["blocked-channel"],
     };
   }
 
@@ -522,7 +478,7 @@ function resolvePendingReviewItem({ householdId, candidate, reasonCode }) {
   };
 }
 
-function ensurePendingReviewItem({ householdId, childProfileId, candidate, result }) {
+function ensurePendingReviewItem({ householdId, childProfileId, candidate, result, policy }) {
   if (result.decision === "allow") {
     return resolvePendingReviewItem({
       householdId,
@@ -531,11 +487,14 @@ function ensurePendingReviewItem({ householdId, childProfileId, candidate, resul
     });
   }
 
-  if (!REVIEW_QUEUE_DECISIONS.has(result.decision)) {
+  if (!shouldQueueForReview({ decision: result.decision, policy })) {
     return resolvePendingReviewItem({
       householdId,
       candidate,
-      reasonCode: `not_review_queue:${result.decision || "unknown"}`,
+      reasonCode:
+        result.decision === "allow_limited"
+          ? `profile_policy:${policy.allowLimitedPolicy}`
+          : `not_review_queue:${result.decision || "unknown"}`,
     });
   }
 
@@ -573,9 +532,11 @@ function ensurePendingReviewItem({ householdId, childProfileId, candidate, resul
   };
 }
 
-function resolveDecision({ householdId, childProfileId, candidate, maps }) {
+function resolveDecision({ householdId, childProfileId, candidate, maps, policy }) {
   const channelDecision = maps.channelDecisions.get(candidate.channelId);
-  const hardBlocked = hardFilter(candidate, channelDecision);
+  const videoDecision = maps.videoDecisions.get(candidate.videoId);
+  const storedReview = maps.reviews.get(candidate.videoId);
+  const hardBlocked = formatHardFilter(candidate);
 
   if (hardBlocked) {
     const result = {
@@ -595,15 +556,26 @@ function resolveDecision({ householdId, childProfileId, candidate, maps }) {
     });
     return {
       ...result,
-      parentDecisionSource: hardBlocked.riskTags.includes("blocked-channel") ? "channel" : null,
-      parentDecisionAffected: hardBlocked.riskTags.includes("blocked-channel"),
+      parentDecisionSource: null,
+      parentDecisionAffected: false,
       reviewQueue,
       source: "hard_filter",
     };
   }
 
-  const videoDecision = maps.videoDecisions.get(candidate.videoId);
   if (videoDecision) {
+    let overriddenDecisionSource = null;
+
+    if (channelDecision && ["blocked", "review_first"].includes(channelDecision.decision)) {
+      overriddenDecisionSource = `channel:${channelDecision.decision}`;
+    } else if (storedReview) {
+      const storedDecision = decisionFromStoredReview(storedReview);
+
+      if (["block", "review", "unknown"].includes(storedDecision)) {
+        overriddenDecisionSource = `moderation:${storedDecision}`;
+      }
+    }
+
     const reviewQueue = resolvePendingReviewItem({
       householdId,
       candidate,
@@ -621,8 +593,40 @@ function resolveDecision({ householdId, childProfileId, candidate, maps }) {
         videoDecision.parent_facing_reason || candidate.parentExplanation || "",
       parentDecisionSource: "video",
       parentDecisionAffected: true,
+      overriddenDecisionSource,
       reviewQueue,
       source: "parent_video_decision",
+    };
+  }
+
+  if (channelDecision && channelDecision.decision === "blocked") {
+    const result = {
+      decision: "block",
+      reason:
+        channelDecision.parent_facing_reason ||
+        "Blocked because this household blocked the channel.",
+      confidenceScore: 0.99,
+      primaryCategory: candidate.primaryCategory || "General",
+      contentTags: parseLabels(candidate.labelsJson),
+      riskTags: ["blocked-channel"],
+      qualityTags: [],
+      childExplanation: "",
+      parentExplanation:
+        channelDecision.parent_facing_reason ||
+        "Blocked because this household blocked the channel.",
+    };
+    writeModerationReview({ householdId, candidate, result });
+    const reviewQueue = resolvePendingReviewItem({
+      householdId,
+      candidate,
+      reasonCode: "durable_channel_decision:blocked",
+    });
+    return {
+      ...result,
+      parentDecisionSource: "channel",
+      parentDecisionAffected: true,
+      reviewQueue,
+      source: "hard_filter",
     };
   }
 
@@ -640,7 +644,13 @@ function resolveDecision({ householdId, childProfileId, candidate, maps }) {
         "Household requires review before this channel appears.",
     };
     writeModerationReview({ householdId, candidate, result });
-    const reviewQueue = ensurePendingReviewItem({ householdId, childProfileId, candidate, result });
+    const reviewQueue = ensurePendingReviewItem({
+      householdId,
+      childProfileId,
+      candidate,
+      result,
+      policy,
+    });
     return {
       ...result,
       parentDecisionSource: "channel",
@@ -650,18 +660,15 @@ function resolveDecision({ householdId, childProfileId, candidate, maps }) {
     };
   }
 
-  if (channelDecision && channelDecision.decision === "blocked") {
-    resolvePendingReviewItem({
+  if (storedReview && !channelDecision) {
+    const result = resultFromStoredReview(candidate, storedReview);
+    const reviewQueue = ensurePendingReviewItem({
       householdId,
+      childProfileId,
       candidate,
-      reasonCode: "durable_channel_decision:blocked",
+      result,
+      policy,
     });
-  }
-
-  const review = maps.reviews.get(candidate.videoId);
-  if (review && !channelDecision) {
-    const result = resultFromStoredReview(candidate, review);
-    const reviewQueue = ensurePendingReviewItem({ householdId, childProfileId, candidate, result });
     return {
       ...result,
       parentDecisionSource: null,
@@ -677,6 +684,7 @@ function resolveDecision({ householdId, childProfileId, candidate, maps }) {
     childProfileId,
     candidate,
     result: automated,
+    policy,
   });
 
   return {
@@ -725,10 +733,8 @@ function updateDiagnostics(diagnostics, decisionResult) {
     diagnostics.autoAllowed += decisionResult.source === "rule_based" ? 1 : 0;
   } else if (decisionResult.decision === "allow_limited") {
     diagnostics.allowLimited += 1;
-    diagnostics.sentToReview += 1;
   } else if (decisionResult.decision === "review") {
     diagnostics.review += 1;
-    diagnostics.sentToReview += 1;
   } else if (decisionResult.decision === "block") {
     diagnostics.blocked += 1;
     diagnostics.blockedOrUnknown += 1;
@@ -736,10 +742,21 @@ function updateDiagnostics(diagnostics, decisionResult) {
     diagnostics.unknown += 1;
     diagnostics.blockedOrUnknown += 1;
   }
+
+  if (
+    decisionResult.reviewQueue &&
+    ["created_pending", "matched_pending"].includes(decisionResult.reviewQueue.state)
+  ) {
+    diagnostics.sentToReview += 1;
+  }
 }
 
 function visibilityReasonFor({ decision, shownToChild, visibilityReasonCode }) {
   if (shownToChild) {
+    if (visibilityReasonCode === "shown_parent_video_override") {
+      return "Shown because a parent allowed this specific video, overriding the broader channel or moderation decision.";
+    }
+
     if (visibilityReasonCode === "shown_allow_limited_profile_policy") {
       return "Shown because this child profile allows limited-access videos under the current profile policy.";
     }
@@ -762,7 +779,16 @@ function visibilityReasonFor({ decision, shownToChild, visibilityReasonCode }) {
   return reasons[decision] || "Hidden because it was not eligible for child display.";
 }
 
-function visibilityReasonCodeFor({ decision, shownToChild, allowLimitedPolicy }) {
+function visibilityReasonCodeFor({
+  decision,
+  shownToChild,
+  allowLimitedPolicy,
+  overriddenDecisionSource,
+}) {
+  if (shownToChild && overriddenDecisionSource) {
+    return "shown_parent_video_override";
+  }
+
   if (shownToChild && decision === "allow_limited") {
     return "shown_allow_limited_profile_policy";
   }
@@ -790,6 +816,7 @@ function auditCandidateFor(candidate, decisionResult, shownToChild, allowLimited
     decision: decisionResult.decision,
     shownToChild,
     allowLimitedPolicy,
+    overriddenDecisionSource: decisionResult.overriddenDecisionSource,
   });
 
   return {
@@ -860,6 +887,7 @@ function moderateCandidatesWithDiagnostics({
   childProfileId,
   candidates,
   limit = 3,
+  policy,
 }) {
   const diagnostics = {
     hardRejected: 0,
@@ -881,7 +909,7 @@ function moderateCandidatesWithDiagnostics({
     };
   }
 
-  const profilePolicy = getChildAllowLimitedPolicy({ householdId, childProfileId });
+  const profilePolicy = policy || getChildPolicy({ householdId, childProfileId });
   const maps = getDecisionMaps(householdId, candidates);
   const normalized = candidates.map((candidate) => {
     const decisionResult = resolveDecision({
@@ -889,6 +917,7 @@ function moderateCandidatesWithDiagnostics({
       childProfileId,
       candidate,
       maps,
+      policy: profilePolicy,
     });
     updateDiagnostics(diagnostics, decisionResult);
     return {
@@ -911,7 +940,8 @@ function moderateCandidatesWithDiagnostics({
   return {
     results,
     diagnostics,
-    allowLimitedPolicy: profilePolicy,
+    allowLimitedPolicy: profilePolicy.allowLimitedPolicy,
+    policy: profilePolicy,
     auditCandidates: normalized.map((entry) =>
       auditCandidateFor(
         entry.candidate,

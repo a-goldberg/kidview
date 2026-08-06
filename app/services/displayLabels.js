@@ -46,6 +46,9 @@ const EN_LABELS = {
     "not_review_queue:block": "Blocked; not sent to review",
     "not_review_queue:unknown": "Not sent to review",
     "not_review_queue:review_required": "Not sent to review",
+    "profile_policy:block": "Hidden by the child profile limited-access policy",
+    "profile_policy:allow": "Allowed by the child profile limited-access policy",
+    "profile_policy:limited_frequency": "Handled by the child profile limited-frequency policy",
     "durable_video_decision:allow": "Previously allowed by parent",
     "durable_video_decision:allow_limited": "Previously allowed with limits by parent",
     "durable_video_decision:review_required": "Previously marked for review by parent",
@@ -58,6 +61,7 @@ const EN_LABELS = {
   },
   visibilityReasonCode: {
     shown_allow: "Shown because it was allowed",
+    shown_parent_video_override: "Shown by a specific parent video exception",
     shown_allow_limited_profile_policy: "Shown by child profile limited-access policy",
     hidden_allow_limited_profile_policy: "Hidden by child profile limited-access policy",
     hidden_result_limit: "Hidden by the three-result limit",
