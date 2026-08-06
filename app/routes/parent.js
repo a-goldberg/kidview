@@ -15,6 +15,13 @@ const {
   upsertVideoDecision
 } = require('../services/decisionService');
 const { displayLabel } = require('../services/displayLabels');
+const {
+  createChildProfile,
+  createPolicyProfile,
+  getPolicyManagement,
+  updateChildProfile,
+  updatePolicyProfile
+} = require('../services/policyService');
 
 const router = express.Router();
 
@@ -41,6 +48,67 @@ function sendDecisionResponse(req, res, fallbackPath, payload = {}) {
   return res.redirect(fallbackPath);
 }
 
+const POLICY_SAVED_MESSAGES = Object.freeze({
+  child_created: 'Child profile created.',
+  child_updated: 'Child profile updated.',
+  policy_created: 'Policy profile created.',
+  policy_updated: 'Policy profile updated.'
+});
+
+function confidenceFromPercent(value) {
+  if (value === null || value === undefined || value === '') {
+    return 0.7;
+  }
+
+  return Number(value) / 100;
+}
+
+function childProfileInput(req) {
+  return {
+    householdId: req.session.parentUser.householdId,
+    policyProfileId: Number(req.body.policyProfileId),
+    displayName: req.body.displayName,
+    birthYear: req.body.birthYear,
+    allowLimitedPolicy: req.body.allowLimitedPolicy,
+    allowLimitedMinConfidence: confidenceFromPercent(
+      req.body.allowLimitedMinConfidencePercent
+    ),
+    dailySearchLimit: req.body.dailySearchLimit,
+    dailyVideoWatchLimit: req.body.dailyVideoWatchLimit
+  };
+}
+
+function policyProfileInput(req) {
+  return {
+    householdId: req.session.parentUser.householdId,
+    name: req.body.name,
+    description: req.body.description,
+    maxResults: req.body.maxResults
+  };
+}
+
+function renderPolicyManagement(req, res, { status = 200, errorMessage = null } = {}) {
+  const management = getPolicyManagement(req.session.parentUser.householdId);
+
+  return res.status(status).render('parent/profiles', {
+    title: 'Profiles & Policies',
+    management,
+    errorMessage,
+    savedMessage: POLICY_SAVED_MESSAGES[req.query.saved] || null
+  });
+}
+
+function handlePolicyManagementError(req, res, next, error) {
+  if (error instanceof RangeError) {
+    return renderPolicyManagement(req, res, {
+      status: 400,
+      errorMessage: error.message
+    });
+  }
+
+  return next(error);
+}
+
 router.get('/', requireParent, (req, res) => {
   const dashboard = getParentDashboard(req.session.parentUser.householdId);
 
@@ -48,6 +116,62 @@ router.get('/', requireParent, (req, res) => {
     title: 'Parent Dashboard',
     dashboard
   });
+});
+
+router.get('/profiles', requireParent, (req, res) => {
+  renderPolicyManagement(req, res);
+});
+
+router.post('/profiles/policies', requireParent, (req, res, next) => {
+  try {
+    createPolicyProfile(policyProfileInput(req));
+    return res.redirect('/parent/profiles?saved=policy_created#policies');
+  } catch (error) {
+    return handlePolicyManagementError(req, res, next, error);
+  }
+});
+
+router.post('/profiles/policies/:policyProfileId', requireParent, (req, res, next) => {
+  try {
+    const policyProfile = updatePolicyProfile({
+      ...policyProfileInput(req),
+      policyProfileId: Number(req.params.policyProfileId)
+    });
+
+    if (!policyProfile) {
+      return res.status(404).render('not-found', { title: 'Policy profile not found' });
+    }
+
+    return res.redirect('/parent/profiles?saved=policy_updated#policies');
+  } catch (error) {
+    return handlePolicyManagementError(req, res, next, error);
+  }
+});
+
+router.post('/profiles/children', requireParent, (req, res, next) => {
+  try {
+    createChildProfile(childProfileInput(req));
+    return res.redirect('/parent/profiles?saved=child_created#children');
+  } catch (error) {
+    return handlePolicyManagementError(req, res, next, error);
+  }
+});
+
+router.post('/profiles/children/:childProfileId', requireParent, (req, res, next) => {
+  try {
+    const childProfile = updateChildProfile({
+      ...childProfileInput(req),
+      childProfileId: Number(req.params.childProfileId)
+    });
+
+    if (!childProfile) {
+      return res.status(404).render('not-found', { title: 'Child profile not found' });
+    }
+
+    return res.redirect('/parent/profiles?saved=child_updated#children');
+  } catch (error) {
+    return handlePolicyManagementError(req, res, next, error);
+  }
 });
 
 router.get('/reviews', requireParent, (req, res) => {
