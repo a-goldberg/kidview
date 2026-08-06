@@ -68,7 +68,7 @@ These are parent-facing explanation strings stored per audited candidate.
 
 ## Child Profile allow_limited Policy
 
-These values live on `child_profiles.allow_limited_policy`. The current default is `block`; parent-facing profile controls have not been wired yet.
+These values live on `child_profiles.allow_limited_policy`. The current default is `block`, and parents can manage the value from the Profiles & Policies page.
 
 | Policy | Meaning |
 | --- | --- |
@@ -78,6 +78,8 @@ These values live on `child_profiles.allow_limited_policy`. The current default 
 | `limited_frequency` | At most one `allow_limited` candidate can fill an open result slot after normal `allow` results are considered, and only when its confidence is above `child_profiles.allow_limited_min_confidence`. This mode does not create review items merely because a limited candidate was not selected. |
 
 The default `allow_limited_min_confidence` is `0.70`. This threshold only matters for `limited_frequency`.
+
+The parent UI summarizes these modes as **more restricted**, **parent-reviewed**, **balanced**, and **broader access**. Those posture labels are derived display copy, not stored audit or policy values, and they do not include daily usage limits.
 
 Review items are household-level records. A child policy change is reconciled when the candidate is next evaluated, rather than immediately deleting a pending item that may also be relevant to another child profile.
 

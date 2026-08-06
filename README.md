@@ -108,9 +108,25 @@ Current configurable values are:
 - `child_profiles.daily_search_limit`: nullable; `NULL` means unlimited.
 - `child_profiles.daily_video_watch_limit`: nullable; `NULL` means unlimited.
 
-Daily search and watch limits are configuration-only in this milestone. They are present for the upcoming parent profile controls but are not enforced yet. Accurate watch-limit enforcement will require actual playback/watch events rather than the current single clicked-video field on a search event.
+Daily search and watch limits are configurable from the parent profile controls but are not enforced yet. Accurate watch-limit enforcement will require actual playback/watch events rather than the current single clicked-video field on a search event.
 
 The original schema also contains `policy_profiles.allow_shorts` and `policy_profiles.allow_livestreams`. These are inactive scaffolding and are deliberately not exposed or honored by the policy service. Shorts and live/upcoming streams remain v1 format guardrails. Non-embeddable videos remain a playback constraint rather than a parent-configurable moderation setting.
+
+### Parent Profile Management
+
+The parent **Profiles & Policies** page at `/parent/profiles` supports:
+
+- creating and editing household-owned result policies;
+- setting policy names, descriptions, and a one-to-three result cap;
+- creating and editing child profiles;
+- assigning a household policy to a child;
+- configuring limited-access behavior and its limited-frequency confidence threshold;
+- configuring nullable daily search and watch limits; and
+- showing which children will be affected before a shared result policy is edited.
+
+The parent UI derives a short content-posture summary from `allow_limited_policy`: more restricted, parent-reviewed, balanced, or broader access. These are explanatory labels, not additional stored policy values or a numeric safety score. Usage limits remain visually separate from content posture.
+
+Policy and child-profile deletion is deliberately excluded from this first management flow. Durable video and channel decisions also remain household-wide. The current child-facing routes still use the first child profile; selecting or establishing an active child profile is a separate child-experience milestone.
 
 ## Testing The Fixture Review Flow
 
@@ -327,7 +343,7 @@ Then restart the app.
 
 ## Planned Features
 
-- Parent profile and policy controls: wire the policy service into household-owned policy profile and per-child settings forms.
+- Child profile selection: replace the current first-profile child flow with an explicit, safe way to establish the active child profile.
 - Search-audit override actions: let a parent create an exact video decision directly from an audited candidate while preserving format guardrails.
 - Safe playback and usage accounting: replace placeholder watch pages with embedded playback and add the watch events needed to enforce future daily limits.
 
