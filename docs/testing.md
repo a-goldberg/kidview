@@ -39,16 +39,22 @@ This keeps tests useful without adding a new framework, a browser dependency, or
 | --- | --- | --- |
 | Allowed result appears | Search `otters` | Sea otter result appears and total child results are at most 3. |
 | More than 3 allowed results are capped | Test inserts five `capmatrix` videos with parent allow decisions | Search `capmatrix` shows exactly 3 results. |
+| Policy result cap is enforced | Set assigned policy profile to 1 result; search `capmatrix` | Exactly 1 result appears, then the test restores the cap to 3. |
+| Policy defaults and usage-limit persistence | Read and update the child policy | Daily limits default to unlimited and accept positive integer configuration values. |
+| Policy writes are household-scoped | Attempt child/profile updates with the wrong household | No row changes and the service returns no updated record. |
 | Parent video allow overrides moderation | Update seeded Rick Astley video decision to `allow`; search `Rick Astley` | Video appears despite normal moderation signals. |
 | Parent video block hides result | Update Be Smart blue/nature video decision to `block`; search `blue rare nature` | Video is hidden. |
 | Approved channel boosts result | Search `otters` | Deep Blue Science result is allowed and tagged with `household-approved-channel`. |
 | Blocked channel hard-blocks result | Search `parkour` | Candidate is blocked by `hard_filter` and hidden. |
+| Exact video allow overrides blocked channel | Allow the Parkour video specifically; search `parkour` | Video appears with `shown_parent_video_override` audit reason. |
 | Review-first channel sends to review | Search `teen drama` | Candidate final decision is `review` and review queue reason is `review`. |
 | Shorts blocked | Search `strict schedule` | Short candidate is blocked and hidden. |
 | Live stream blocked | Search `lofi hip hop radio` | Live candidate is blocked and hidden. |
 | Upcoming stream blocked | Test inserts an upcoming livestream; search `upcoming regression` | Upcoming candidate is blocked and hidden. |
+| Format guardrails beat exact video allow | Allow the seeded Short specifically; search `strict schedule` | Short remains blocked and audited by `hard_filter`. |
 | Completed-live needs strong signals | Search `ambient drone`; then insert a strong trusted completed-live science video | Weak recording is hidden; strong trusted recording can appear. |
-| `allow_limited` follows profile policy | Search `fractions` with profile policy `block`, then `limited_frequency` | Hidden by default; visible when profile policy permits one limited result. |
+| `allow_limited` follows profile visibility policy | Search `fractions` with profile policy `block`, then `limited_frequency` | Hidden by default; visible when profile policy permits one limited result. |
+| `allow_limited` follows profile review routing | Exercise `block`, `review`, `allow`, and `limited_frequency` against an automated limited result | Only `review` creates a pending review item; child visibility follows each mode. |
 | Zero-result searches appear in audit | Search `clickbait` | Search event exists with `shown_to_child_count = 0`. |
 | Non-embeddable source candidate audited | Stub YouTube source with a non-embeddable candidate | Audit row is written with no normal persisted video row. |
 
@@ -72,5 +78,6 @@ After running the app locally, these searches should stay useful for parent-faci
 - Cross-household access-control probes.
 - Real YouTube API responses.
 - Future LLM/contextual moderation.
+- Enforcement of configured daily search and watch limits.
 
 Those are good candidates for later test layers. For now, keep this suite fast, local, and boring enough to run before most changes.

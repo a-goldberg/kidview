@@ -94,7 +94,23 @@ assets/
 - Transcript text is not stored by default.
 - Search uses either mock database candidates or a YouTube Data API source adapter behind the same internal service boundary.
 - YouTube responses are normalized into KidView candidate records. Raw YouTube API responses and transcript text are not stored by default.
-- Blocked, pending-review, unknown, `allow_limited`, Short, live, and upcoming stream candidates are not shown to children.
+- Blocked, pending-review, unknown, Short, live, and upcoming stream candidates are not shown to children. `allow_limited` visibility follows the active child profile policy.
+
+## Policy Configuration
+
+KidView keeps household-owned `policy_profiles` and assigns a policy profile to each child. The active server-side policy service lives in `app/services/policyService.js`.
+
+Current configurable values are:
+
+- `policy_profiles.max_results`: one to three results. Three remains the product-wide maximum.
+- `child_profiles.allow_limited_policy`: `block`, `review`, `allow`, or `limited_frequency`.
+- `child_profiles.allow_limited_min_confidence`: threshold used only by `limited_frequency`.
+- `child_profiles.daily_search_limit`: nullable; `NULL` means unlimited.
+- `child_profiles.daily_video_watch_limit`: nullable; `NULL` means unlimited.
+
+Daily search and watch limits are configuration-only in this milestone. They are present for the upcoming parent profile controls but are not enforced yet. Accurate watch-limit enforcement will require actual playback/watch events rather than the current single clicked-video field on a search event.
+
+The original schema also contains `policy_profiles.allow_shorts` and `policy_profiles.allow_livestreams`. These are inactive scaffolding and are deliberately not exposed or honored by the policy service. Shorts and live/upcoming streams remain v1 format guardrails. Non-embeddable videos remain a playback constraint rather than a parent-configurable moderation setting.
 
 ## Testing The Fixture Review Flow
 
@@ -155,20 +171,20 @@ The YouTube adapter calls `search.list`, fetches matching video details with `vi
 - no Shorts
 - no currently live or upcoming streams
 - no non-embeddable videos
-- no blocked channels
+- no blocked channels unless a parent has made a more specific allow decision for the exact video
 - at most three child-visible results
 - blocked, review, and unknown items stay out of the child UI
 
 Fresh YouTube candidates are evaluated by a deterministic `rule-based-v1` moderation layer. It uses title, description, channel title, duration, live status, Short flags, embeddability, publication date, and view count. It does not use OpenAI, transcripts, thumbnails, or raw YouTube response storage.
 
-The rule layer can auto-allow probably-safe educational/source-backed videos, but hard blocks still win:
+The rule layer can auto-allow probably-safe educational/source-backed videos, but format guardrails still win:
 
 - Shorts are blocked.
 - Live and upcoming streams are blocked because they cannot be assessed before child viewing.
 - Completed livestream recordings are not hard-blocked, but they usually require review unless they come from a trusted channel with strong moderation signals.
 - Non-embeddable videos are blocked before child display.
-- Blocked channels are blocked.
-- Parent video decisions override automated decisions unless a hard block applies.
+- Blocked channels are blocked unless a parent has made a more specific decision for the exact video.
+- Parent video decisions override automated and broader channel decisions unless a format guardrail applies.
 - Parent channel approvals can allow videos unless live/upcoming hard blocks or severe title/content flags apply.
 
 In development mode, the server logs how many YouTube candidates were returned, hard rejected, auto-allowed, sent to review, blocked/unknown, and shown to the child.
@@ -179,8 +195,8 @@ KidView currently uses `rule-based-v1` in `app/services/moderationService.js`. I
 
 Moderation runs in this order:
 
-1. Hard filters run first: Shorts, live/upcoming streams, and blocked channels are blocked before scoring.
-2. Parent video decisions override automated decisions unless a hard filter applies.
+1. Format guardrails run first: Shorts and live/upcoming streams are blocked before other decisions. Non-embeddable source candidates are rejected before normal video persistence.
+2. Exact parent video decisions apply next. A specific video decision can override an automated result or a broader blocked/review-first channel decision.
 3. Channel decisions apply next: `review_first` forces review, `blocked` blocks, and `approved` becomes a strong positive scoring signal.
 4. Stored automated moderation reviews are reused when no newer channel decision changes the context.
 5. Unknown videos are scored by deterministic rules.
@@ -216,11 +232,18 @@ Decision thresholds:
 - Score `45+`: `review`.
 - Anything lower: `unknown`.
 
-Child search results currently include only `allow` decisions by default. `allow_limited` means parent-approved or likely useful, but each child profile now has an `allow_limited_policy` field for upcoming profile management work. The default is `block`, so limited-access videos remain hidden today. Future profile settings can choose `block`, `review`, `allow`, or `limited_frequency`.
+Child search results include `allow` decisions plus any `allow_limited` decisions permitted by the child profile. The default `allow_limited_policy` is `block`, so limited-access videos remain hidden unless the profile changes.
 
-When `limited_frequency` is eventually selected for a child profile, KidView allows at most one limited result per search, only after normal `allow` results are considered, and only when the limited candidate is above the profile confidence threshold. The default `allow_limited_min_confidence` is `0.70`.
+When `limited_frequency` is selected for a child profile, KidView allows at most one limited result per search, only after normal `allow` results are considered, and only when the limited candidate is above the profile confidence threshold. The default `allow_limited_min_confidence` is `0.70`.
 
-`allow_limited`, `review`, and `unknown` stay parent-facing in the review queue and decision history unless profile policy explicitly makes limited videos child-visible. Hard-blocked items are silently filtered out of child results and do not create normal parent review queue items.
+The four limited-access modes have distinct behavior:
+
+- `block`: hide automated `allow_limited` results and do not add them to the review queue.
+- `review`: hide automated `allow_limited` results and add them to the review queue.
+- `allow`: treat `allow_limited` results as child-visible candidates without adding them to review.
+- `limited_frequency`: allow at most one qualifying limited result after normal allowed results, without adding unselected limited results to review.
+
+`review` and `unknown` moderation outcomes remain parent-facing review items. Hard-blocked items are filtered out of child results and do not create normal parent review queue items. Durable parent video decisions resolve existing review items rather than repeatedly asking the parent to review the same decision.
 
 Search audit detail pages record profile-policy reasons for limited videos, such as `shown_allow_limited_profile_policy` and `hidden_allow_limited_profile_policy`.
 
@@ -237,7 +260,7 @@ KidView keeps global source data separate from household workflow state:
 - `household_review_items` stores parent-actionable review queue items for one household.
 - Durable parent choices still live in `household_video_decisions` and `household_channel_decisions`.
 
-The parent review page shows only pending review items whose current moderation decision is `allow_limited`, `review`, or `unknown`. Hard blocks are not parent-actionable queue items by default: Shorts, non-embeddable videos, live/upcoming streams, blocked channels, and durable household block decisions are filtered or resolved outside the normal queue.
+The parent review page shows pending `review` and `unknown` items, plus automated `allow_limited` items when the child profile policy is `review`. Hard blocks are not normal review queue items: Shorts, non-embeddable videos, live/upcoming streams, blocked channels, and durable household block decisions are filtered or resolved outside the queue. They remain visible in search audit history so a parent can understand the decision and later create a specific video exception where the format guardrails permit one.
 
 Approving or blocking a video resolves the pending review item and writes the durable household video decision. Ignoring a video or clearing the queue marks pending items as `dismissed` for the current household only; it does not delete videos, channels, moderation reviews, search history, or parent decisions. If a child searches for the same dismissed video again later, KidView may create a new pending review item unless a durable household video/channel decision already applies.
 
@@ -245,7 +268,7 @@ For the parent-facing vocabulary behind search audit, review queue, decision, an
 
 ## Manual Validation Checklist
 
-This repo does not currently have an automated test runner. For lightweight validation after search or moderation changes:
+For browser-level validation after running the automated regression suite:
 
 1. Run migrations from a clean temporary database:
 
@@ -267,7 +290,7 @@ This repo does not currently have an automated test runner. For lightweight vali
 
 4. Search as a child for `science`, `animation`, `drama`, and `otters`.
 5. Confirm child-visible results are capped at three and use local category icons.
-6. Confirm hard-blocked items, Shorts, live/upcoming streams, review, unknown, and `allow_limited` items do not appear to children.
+6. Confirm hard-blocked items, Shorts, live/upcoming streams, review, and unknown items do not appear to children. Confirm `allow_limited` follows the selected child profile policy.
 7. Confirm a zero-result child search appears in `/parent/searches` when the zero-result view is selected.
 8. Open the audit detail page and confirm candidates are grouped into shown, review, hidden, hard-blocked, and limited sections.
 9. Confirm `/parent/decisions` still allows editing video and channel decisions.
@@ -302,8 +325,9 @@ Then restart the app.
 
 ## Planned Features
 
-- Parent decision history: add a parent-facing page for searching, filtering, and editing prior video and channel decisions. This should make it easy to recover from mistakes such as accidentally blocking a video or approving the wrong channel.
-- Review queue continuity: update parent review actions so submitting a decision does not jump the reviewer back to the top of a long queue. Prefer a small vanilla JavaScript progressive enhancement that records the decision without a full page refresh, with a non-JavaScript fallback that preserves scroll position or returns to the reviewed item.
+- Parent profile and policy controls: wire the policy service into household-owned policy profile and per-child settings forms.
+- Search-audit override actions: let a parent create an exact video decision directly from an audited candidate while preserving format guardrails.
+- Safe playback and usage accounting: replace placeholder watch pages with embedded playback and add the watch events needed to enforce future daily limits.
 
 ## Useful Scripts
 

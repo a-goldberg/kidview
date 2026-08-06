@@ -12,12 +12,13 @@ Parent-facing EJS views should display these values through `app/services/displa
 | `source_mode` | `youtube` | Search used the YouTube Data API adapter, then normalized candidates into KidView records. |
 | `source_mode` | `unknown` | Display fallback when older or incomplete audit rows do not have a stored source. |
 | `final_decision` | `allow` | Eligible for child display, subject to the child result cap of three. |
-| `final_decision` | `allow_limited` | Parent-facing approval/limited state. In this version, limited-access videos are not child-visible. |
+| `final_decision` | `allow_limited` | Limited-access state whose visibility and review routing follow the child profile policy. |
 | `final_decision` | `review` | Needs parent review before child display. |
 | `final_decision` | `block` | Blocked by a hard rule, parent decision, channel decision, or severe-risk moderation result. |
 | `final_decision` | `unknown` | KidView did not have enough confidence/context to show the video. |
 | `shown_to_child` | `0`, `1` | Whether this exact candidate appeared in the child result list for that search. |
 | `visibility_reason_code` | `shown_allow` | Candidate was shown because it was allowed within the result cap. |
+| `visibility_reason_code` | `shown_parent_video_override` | Candidate was shown because an exact parent video decision overrode a broader channel or moderation decision. |
 | `visibility_reason_code` | `shown_allow_limited_profile_policy` | Candidate was shown because child profile policy made `allow_limited` child-visible. |
 | `visibility_reason_code` | `hidden_allow_limited_profile_policy` | Candidate was hidden because child profile policy did not make `allow_limited` child-visible. |
 | `visibility_reason_code` | `hidden_result_limit` | Candidate was otherwise eligible but hidden by the three-result cap. |
@@ -27,7 +28,7 @@ Parent-facing EJS views should display these values through `app/services/displa
 | `visibility_reason_code` | `hidden_not_child_visible:<policy>` | Fallback for hidden candidates that did not match a more specific visibility code. |
 | `visibility_reason_code` | `source_filter:not_embeddable` | Candidate was hidden before persistence because it was not embeddable. |
 | `moderation_source` | `source_filter` | Rejected before local video persistence, currently for non-embeddable YouTube candidates. |
-| `moderation_source` | `hard_filter` | Blocked by non-negotiable product rules such as Shorts, live/upcoming streams, or blocked channels. |
+| `moderation_source` | `hard_filter` | Blocked by a format guardrail or a household blocked-channel decision. An exact video decision may override the channel decision, but not a format guardrail. |
 | `moderation_source` | `parent_video_decision` | A durable household video decision decided the outcome. |
 | `moderation_source` | `parent_channel_decision` | A durable household channel decision decided the outcome. |
 | `moderation_source` | `stored_moderation_review` | Existing moderation review data was reused. |
@@ -44,6 +45,7 @@ These are parent-facing explanation strings stored per audited candidate.
 | Decision/state | Current wording |
 | --- | --- |
 | Shown `allow` candidate | `Shown because moderation resolved this candidate as allowed within the child result limit.` |
+| Shown exact video exception | `Shown because a parent allowed this specific video, overriding the broader channel or moderation decision.` |
 | Hidden `allow` candidate | `Hidden because the child result limit had already been reached.` |
 | Shown `allow_limited` candidate | `Shown because this child profile allows limited-access videos under the current profile policy.` |
 | Hidden `allow_limited` candidate | `Hidden because this child profile does not make limited-access videos child-visible.` |
@@ -66,14 +68,14 @@ These are parent-facing explanation strings stored per audited candidate.
 
 ## Child Profile allow_limited Policy
 
-These values live on `child_profiles.allow_limited_policy`. The current default is `block`, so existing child behavior remains unchanged until profile management UI is added.
+These values live on `child_profiles.allow_limited_policy`. The current default is `block`; parent-facing profile controls have not been wired yet.
 
 | Policy | Meaning |
 | --- | --- |
-| `block` | `allow_limited` candidates are never child-visible. This is the current default. |
-| `review` | `allow_limited` candidates remain hidden and should be handled as parent-review candidates. |
-| `allow` | `allow_limited` candidates can be child-visible like `allow` candidates, without overriding hard blocks or review-first channel decisions. |
-| `limited_frequency` | At most one `allow_limited` candidate can fill an open result slot after normal `allow` results are considered, and only when its confidence is above `child_profiles.allow_limited_min_confidence`. |
+| `block` | Automated `allow_limited` candidates are hidden and are not added to the review queue. This is the default. |
+| `review` | Automated `allow_limited` candidates remain hidden and are added to the parent review queue. |
+| `allow` | `allow_limited` candidates can be child-visible like `allow` candidates and are not added to review. Format guardrails still apply. |
+| `limited_frequency` | At most one `allow_limited` candidate can fill an open result slot after normal `allow` results are considered, and only when its confidence is above `child_profiles.allow_limited_min_confidence`. This mode does not create review items merely because a limited candidate was not selected. |
 
 The default `allow_limited_min_confidence` is `0.70`. This threshold only matters for `limited_frequency`.
 
@@ -107,7 +109,7 @@ These values live on `moderation_reviews.status` and/or `moderation_reviews.deci
 | --- | --- |
 | `pending` | Legacy/initial state for review rows that have not been resolved. |
 | `allow` | Moderation or parent review considers the item allowed. |
-| `allow_limited` | Limited approval state. Parent-facing and not child-visible in this version. |
+| `allow_limited` | Limited approval state. Visibility and review routing follow the child profile policy. |
 | `review` | Needs parent review before child display. |
 | `block` | Blocked by moderation or parent review. |
 | `unknown` | Not enough confidence/context to show the item. |
@@ -118,11 +120,14 @@ These codes appear in `search_event_candidates.review_queue_reason_code` and/or 
 
 | Code pattern | Meaning |
 | --- | --- |
-| `allow_limited` | Candidate is parent-actionable because moderation returned `allow_limited`. |
+| `allow_limited` | Candidate is parent-actionable because moderation returned `allow_limited` while the child profile policy was `review`. |
 | `review` | Candidate is parent-actionable because moderation returned `review`. |
 | `unknown` | Candidate is parent-actionable because moderation returned `unknown`. |
 | `auto_allowed_by_moderation` | Pending item was resolved because moderation now allows the video. |
 | `not_review_queue:<decision>` | Pending item was resolved because the latest decision is not review-queue eligible. Example: `not_review_queue:block`. |
+| `profile_policy:block` | Automated `allow_limited` candidate was hidden and excluded from review by child profile policy. |
+| `profile_policy:allow` | Automated `allow_limited` candidate was handled as child-visible by child profile policy. |
+| `profile_policy:limited_frequency` | Automated `allow_limited` candidate was handled by the limited-frequency selection policy. |
 | `hard_block:<tag>` | Pending item was resolved because a hard block now applies. Example: `hard_block:short`. |
 | `durable_video_decision:<decision>` | Pending item was resolved because a household video decision now applies. |
 | `durable_channel_decision:blocked` | Pending item was resolved because the household blocked the channel. |
@@ -137,8 +142,8 @@ These codes appear in `search_event_candidates.review_queue_reason_code` and/or 
 
 | Table/field | Values | Meaning |
 | --- | --- | --- |
-| `household_video_decisions.decision` | `allow` | Parent allows this video for the household. Child-visible unless a hard block applies. |
-| `household_video_decisions.decision` | `allow_limited` | Parent marks the video as limited. In this version, still not child-visible. |
+| `household_video_decisions.decision` | `allow` | Parent allows this exact video for the household. This overrides automated and broader channel decisions, but not format guardrails. |
+| `household_video_decisions.decision` | `allow_limited` | Parent marks the exact video as limited. Child visibility follows the active child profile policy. |
 | `household_video_decisions.decision` | `review_required` | Parent keeps/requires review before child display. |
 | `household_video_decisions.decision` | `block` | Parent blocks this video for the household. |
 | `household_channel_decisions.decision` | `approved` | Channel is trusted as a positive scoring signal. |
@@ -206,9 +211,21 @@ These labels are stored on `videos.labels_json` and can appear in child-safe car
 | --- | --- |
 | `source_candidate_count` | Number of candidates returned by the active source adapter. |
 | `hard_blocked_count` | Source hard rejections plus moderation hard filters. |
-| `sent_to_review_count` | Count of `review` plus `allow_limited` moderation outcomes. |
+| `sent_to_review_count` | Count of candidates that created or matched a pending review item. Automated `allow_limited` counts only when the child profile policy is `review`. |
 | `allowed_count` | Count of candidates with final decision `allow`. This may be higher than shown count if more than three are allowed. |
 | `allow_limited_count` | Count of candidates with final decision `allow_limited`. |
 | `unknown_count` | Count of candidates with final decision `unknown`. |
 | `blocked_count` | Count of candidates with final decision `block`. |
 | `shown_to_child_count` | Number of child-visible results shown for the search. Capped at three. |
+
+## Policy Configuration Fields
+
+| Field | Meaning |
+| --- | --- |
+| `policy_profiles.max_results` | Child-visible result cap for children assigned to the profile. Valid values are 1 through 3. |
+| `child_profiles.allow_limited_policy` | Controls visibility and review routing for `allow_limited` candidates. |
+| `child_profiles.allow_limited_min_confidence` | Confidence threshold used by `limited_frequency`. |
+| `child_profiles.daily_search_limit` | Future daily search limit. `NULL` means unlimited; not enforced in this milestone. |
+| `child_profiles.daily_video_watch_limit` | Future daily video watch limit. `NULL` means unlimited; not enforced in this milestone. |
+
+The initial schema fields `policy_profiles.allow_shorts` and `policy_profiles.allow_livestreams` are inactive scaffolding. They are not read by the policy service and should not be exposed as normal parent controls. Shorts and live/upcoming streams remain format guardrails.
