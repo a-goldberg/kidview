@@ -12,14 +12,6 @@ function normalizeChannelDecision(value) {
   return CHANNEL_DECISIONS.has(value) ? value : 'review_first';
 }
 
-function videoDecisionToReviewStatus(decision) {
-  if (decision === 'review_required') {
-    return 'review';
-  }
-
-  return decision;
-}
-
 function videoDecisionToReviewItemStatus(decision) {
   return decision === 'block' ? 'blocked' : 'approved';
 }
@@ -55,24 +47,15 @@ function upsertVideoDecision({ householdId, videoId, parentUserId, decision, rea
         updated_at = CURRENT_TIMESTAMP`
     ).run(householdId, videoId, normalizedDecision, parentReason, parentUserId);
 
+    // Keep the automated moderation result intact so audit and decision-history
+    // views can explain what the durable parent decision overrode.
     db.prepare(
-      `INSERT INTO moderation_reviews
-        (household_id, video_id, status, decision, parent_facing_reason, parent_explanation, reviewed_by_parent_user_id, reviewed_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-       ON CONFLICT(household_id, video_id) DO UPDATE SET
-        status = excluded.status,
-        decision = excluded.decision,
-        reviewed_by_parent_user_id = excluded.reviewed_by_parent_user_id,
-        reviewed_at = CURRENT_TIMESTAMP`
-    ).run(
-      householdId,
-      videoId,
-      videoDecisionToReviewStatus(normalizedDecision),
-      videoDecisionToReviewStatus(normalizedDecision),
-      null,
-      null,
-      parentUserId
-    );
+      `UPDATE moderation_reviews
+       SET
+        reviewed_by_parent_user_id = ?,
+        reviewed_at = CURRENT_TIMESTAMP
+       WHERE household_id = ? AND video_id = ?`
+    ).run(parentUserId, householdId, videoId);
 
     resolvePendingReviewItem({
       householdId,

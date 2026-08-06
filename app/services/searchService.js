@@ -2,6 +2,7 @@ const db = require('../db/database');
 const config = require('../config');
 const mockVideoSourceService = require('./mockVideoSourceService');
 const moderationService = require('./moderationService');
+const { getChildPolicy } = require('./policyService');
 const youtubeSourceService = require('./youtubeSourceService');
 
 const CATEGORY_RULES = [
@@ -410,11 +411,13 @@ async function search({ query, householdId, childProfileId }) {
 
   const sourceResponse = await getSourceCandidates(safeQuery);
   const candidates = sourceResponse.candidates;
+  const policy = getChildPolicy({ householdId, childProfileId });
   const moderation = moderationService.moderateCandidatesWithDiagnostics({
     householdId,
     childProfileId,
     candidates,
-    limit: 3
+    limit: policy.maxResults,
+    policy
   });
   const results = moderation.results;
 
