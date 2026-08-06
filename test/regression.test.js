@@ -134,12 +134,16 @@ function upsertVideoDecision(externalVideoId, decision, reason = "Regression tes
 }
 
 function setChildAllowLimitedPolicy(policy, threshold = 0.7) {
-  db.prepare(
-    `UPDATE child_profiles
-     SET allow_limited_policy = ?,
-      allow_limited_min_confidence = ?
-     WHERE id = ?`,
-  ).run(policy, threshold, childProfile().id);
+  const child = childProfile();
+
+  policyService.updateChildPolicy({
+    householdId: child.household_id,
+    childProfileId: child.id,
+    allowLimitedPolicy: policy,
+    allowLimitedMinConfidence: threshold,
+    dailySearchLimit: child.daily_search_limit,
+    dailyVideoWatchLimit: child.daily_video_watch_limit,
+  });
 }
 
 function insertVideo({
@@ -303,6 +307,42 @@ test("policy configuration writes stay household-scoped", () => {
   assert.equal(policyProfile().max_results, 3);
 });
 
+test("policy configuration rejects invalid limits and policy values", () => {
+  const child = childProfile();
+  const profile = policyProfile();
+
+  assert.throws(
+    () => policyService.updatePolicyProfile({
+      householdId: household().id,
+      policyProfileId: profile.id,
+      maxResults: 4,
+    }),
+    /1 to 3/,
+  );
+  assert.throws(
+    () => policyService.updateChildPolicy({
+      householdId: child.household_id,
+      childProfileId: child.id,
+      allowLimitedPolicy: "sometimes",
+      allowLimitedMinConfidence: 0.7,
+      dailySearchLimit: null,
+      dailyVideoWatchLimit: null,
+    }),
+    /not supported/,
+  );
+  assert.throws(
+    () => policyService.updateChildPolicy({
+      householdId: child.household_id,
+      childProfileId: child.id,
+      allowLimitedPolicy: "block",
+      allowLimitedMinConfidence: 0.7,
+      dailySearchLimit: 0,
+      dailyVideoWatchLimit: null,
+    }),
+    /positive integer/,
+  );
+});
+
 test("allowed result appears for a seeded safe search", async () => {
   const response = await childSearch("otters");
 
@@ -406,6 +446,32 @@ test("specific parent video allow overrides a blocked channel", async () => {
   assert.equal(candidate.visibility_reason_code, "shown_parent_video_override");
 });
 
+test("specific parent video allow overrides a stored automated block", async () => {
+  const video = insertVideo({
+    externalId: "automated-block-override",
+    title: "Automated Block Override Candidate",
+    description: "Regression candidate with a stored automated block.",
+  });
+  insertStoredModerationReview(video.id, "block", 0.95);
+
+  decisionService.upsertVideoDecision({
+    householdId: household().id,
+    parentUserId: parentUser().id,
+    videoId: video.id,
+    decision: "allow",
+    reason: "Specific parent exception to an automated block.",
+  });
+
+  const response = await childSearch("automated block override");
+  const event = latestSearchEvent("automated block override");
+  const candidate = auditCandidate(event.id, "Automated Block Override");
+
+  assert.ok(response.results.some((result) => result.videoId === video.id));
+  assert.equal(candidate.final_decision, "allow");
+  assert.equal(candidate.visibility_reason_code, "shown_parent_video_override");
+  assert.equal(candidate.parent_decision_source, "video");
+});
+
 test("review-first channel sends matching videos to parent review", async () => {
   await childSearch("teen drama");
   const event = latestSearchEvent("teen drama");
@@ -450,15 +516,33 @@ test("Shorts and live or upcoming streams are blocked", async () => {
 
 test("specific parent video allow cannot override format guardrails", async () => {
   upsertVideoDecision("sH8oR3t5y1u", "allow", "Attempted Short exception.");
+  upsertVideoDecision("L1v3S_tr34m", "allow", "Attempted live-stream exception.");
+  upsertVideoDecision("upcoming-regression-live", "allow", "Attempted upcoming-stream exception.");
 
-  const response = await childSearch("strict schedule");
-  const event = latestSearchEvent("strict schedule");
-  const candidate = auditCandidate(event.id, "strict schedule");
+  let response = await childSearch("strict schedule");
+  let event = latestSearchEvent("strict schedule");
+  let candidate = auditCandidate(event.id, "strict schedule");
 
   assert.equal(response.results.some((result) => result.title.includes("strict schedule")), false);
   assert.equal(candidate.final_decision, "block");
   assert.equal(candidate.moderation_source, "hard_filter");
   assert.match(candidate.hard_block_reason, /Shorts/i);
+
+  response = await childSearch("lofi hip hop radio");
+  event = latestSearchEvent("lofi hip hop radio");
+  candidate = auditCandidate(event.id, "Lofi Hip Hop Radio");
+
+  assert.equal(response.results.some((result) => result.title.includes("Lofi Hip Hop")), false);
+  assert.equal(candidate.final_decision, "block");
+  assert.match(candidate.hard_block_reason, /live/i);
+
+  response = await childSearch("upcoming regression");
+  event = latestSearchEvent("upcoming regression");
+  candidate = auditCandidate(event.id, "Upcoming Regression");
+
+  assert.equal(response.results.some((result) => result.title.includes("Upcoming Regression")), false);
+  assert.equal(candidate.final_decision, "block");
+  assert.match(candidate.hard_block_reason, /upcoming/i);
 });
 
 test("completed-live recordings require strong trusted-channel signals before allowing", async () => {

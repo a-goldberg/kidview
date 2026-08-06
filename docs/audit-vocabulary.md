@@ -79,6 +79,8 @@ These values live on `child_profiles.allow_limited_policy`. The current default 
 
 The default `allow_limited_min_confidence` is `0.70`. This threshold only matters for `limited_frequency`.
 
+Review items are household-level records. A child policy change is reconciled when the candidate is next evaluated, rather than immediately deleting a pending item that may also be relevant to another child profile.
+
 ## Review Queue State
 
 | `review_queue_state` | Meaning |

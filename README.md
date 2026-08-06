@@ -245,6 +245,8 @@ The four limited-access modes have distinct behavior:
 
 `review` and `unknown` moderation outcomes remain parent-facing review items. Hard-blocked items are filtered out of child results and do not create normal parent review queue items. Durable parent video decisions resolve existing review items rather than repeatedly asking the parent to review the same decision.
 
+Review items are household-level records. Changing one child profile's limited-access setting does not blindly delete an existing pending item that may also matter to another child. The new policy applies when a candidate is next evaluated; that evaluation creates, keeps, or resolves the pending item according to the active child policy.
+
 Search audit detail pages record profile-policy reasons for limited videos, such as `shown_allow_limited_profile_policy` and `hidden_allow_limited_profile_policy`.
 
 Parent-facing pages translate stored moderation and audit codes through `app/services/displayLabels.js`. Keep database values stable and inspectable for debugging, then add or adjust parent-readable labels in that helper. The helper is locale-shaped so future localization can add another locale map without changing the underlying decision or audit schema.

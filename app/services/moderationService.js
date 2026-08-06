@@ -770,7 +770,7 @@ function visibilityReasonFor({ decision, shownToChild, visibilityReasonCode }) {
 
   const reasons = {
     allow: "Hidden because the child result limit had already been reached.",
-    allow_limited: "Hidden because limited-access videos are not child-visible in this version.",
+    allow_limited: "Hidden because the child profile policy did not select this limited-access video.",
     review: "Hidden because this candidate requires parent review before child display.",
     block: "Hidden because this candidate is blocked for child search.",
     unknown: "Hidden because KidView did not have enough confidence to show it.",
