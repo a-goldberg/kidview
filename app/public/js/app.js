@@ -1,5 +1,24 @@
 document.documentElement.classList.add("js-ready");
 
+function syncLimitedConfidenceField(select) {
+  const form = select.closest("form");
+  const confidenceField = form && form.querySelector("[data-limited-confidence-field]");
+
+  if (confidenceField) {
+    confidenceField.hidden = select.value !== "limited_frequency";
+  }
+}
+
+document.querySelectorAll("[data-limited-policy-select]").forEach((select) => {
+  syncLimitedConfidenceField(select);
+});
+
+document.addEventListener("change", (event) => {
+  if (event.target.matches("[data-limited-policy-select]")) {
+    syncLimitedConfidenceField(event.target);
+  }
+});
+
 function setFormStatus(form, message, state) {
   const status = form.querySelector(".decision-status");
 

@@ -1,0 +1,250 @@
+<%- include('../partials/head', { title }) %>
+<%- include('../partials/header') %>
+
+<main class="page parent-page">
+  <section class="page-heading compact-heading">
+    <p class="eyebrow">Parent settings</p>
+    <h1>Profiles &amp; policies</h1>
+    <p class="muted">Set each child's access and limits, then reuse simple result policies across your household.</p>
+  </section>
+
+  <%- include('dashboard-nav', { activeSection: 'profiles' }) %>
+
+  <% if (errorMessage) { %>
+    <p class="form-error" role="alert"><%= errorMessage %></p>
+  <% } %>
+  <% if (savedMessage) { %>
+    <p class="decision-status" data-state="saved" role="status"><%= savedMessage %></p>
+  <% } %>
+
+  <div class="management-page-content">
+    <section id="children" aria-labelledby="children-heading">
+      <div class="section-heading-row">
+        <div>
+          <h2 id="children-heading">Children</h2>
+          <p class="muted">A child profile controls limited-access results and daily limits. It is not a login account.</p>
+        </div>
+        <span class="count-pill"><%= management.children.length %></span>
+      </div>
+
+      <div class="management-list">
+        <% management.children.forEach((child) => { %>
+          <details class="panel management-editor" id="child-<%= child.id %>">
+            <summary class="management-summary" title="Edit <%= child.display_name %>'s profile">
+              <span class="management-summary-text">
+                <strong><%= child.display_name %></strong>
+                <span class="muted">
+                  <%= child.policy_profile_name || 'No policy assigned' %>
+                  · <%= child.contentPosture.label %>
+                  · <%= child.daily_search_limit === null ? 'Unlimited searches' : `${child.daily_search_limit} searches/day` %>
+                </span>
+              </span>
+            </summary>
+
+            <p class="muted compact-note"><%= child.contentPosture.description %></p>
+            <form class="stacked-form management-form" action="/parent/profiles/children/<%= child.id %>" method="post">
+              <div class="management-form-grid">
+                <label for="child-<%= child.id %>-name">
+                  <span>Profile name</span>
+                  <input id="child-<%= child.id %>-name" name="displayName" value="<%= child.display_name %>" maxlength="80" autocomplete="off" required>
+                </label>
+                <label for="child-<%= child.id %>-birth-year">
+                  <span>Birth year <small>(optional)</small></span>
+                  <input id="child-<%= child.id %>-birth-year" name="birthYear" type="number" min="1900" max="<%= new Date().getFullYear() %>" value="<%= child.birth_year || '' %>" inputmode="numeric">
+                </label>
+                <label for="child-<%= child.id %>-policy">
+                  <span>Result policy</span>
+                  <select id="child-<%= child.id %>-policy" name="policyProfileId" required>
+                    <% management.policies.forEach((policy) => { %>
+                      <option value="<%= policy.id %>" <%= child.policy_profile_id === policy.id ? 'selected' : '' %>><%= policy.name %> · up to <%= policy.max_results %> result<%= policy.max_results === 1 ? '' : 's' %></option>
+                    <% }) %>
+                  </select>
+                </label>
+                <label for="child-<%= child.id %>-limited-policy">
+                  <span>Limited-access videos</span>
+                  <select id="child-<%= child.id %>-limited-policy" name="allowLimitedPolicy" data-limited-policy-select required>
+                    <option value="block" <%= child.allow_limited_policy === 'block' ? 'selected' : '' %>>Keep hidden</option>
+                    <option value="review" <%= child.allow_limited_policy === 'review' ? 'selected' : '' %>>Send to parent review</option>
+                    <option value="limited_frequency" <%= child.allow_limited_policy === 'limited_frequency' ? 'selected' : '' %>>Allow at most one strong result</option>
+                    <option value="allow" <%= child.allow_limited_policy === 'allow' ? 'selected' : '' %>>Allow with regular results</option>
+                  </select>
+                </label>
+                <label for="child-<%= child.id %>-confidence" data-limited-confidence-field>
+                  <span>Minimum confidence (%)</span>
+                  <input id="child-<%= child.id %>-confidence" name="allowLimitedMinConfidencePercent" type="number" min="0" max="100" step="1" value="<%= Math.round(Number(child.allow_limited_min_confidence === null ? 0.7 : child.allow_limited_min_confidence) * 100) %>" inputmode="numeric" required>
+                  <small class="muted">Used only when allowing at most one strong limited result.</small>
+                </label>
+                <label for="child-<%= child.id %>-search-limit">
+                  <span>Daily search limit</span>
+                  <input id="child-<%= child.id %>-search-limit" name="dailySearchLimit" type="number" min="1" step="1" value="<%= child.daily_search_limit || '' %>" placeholder="Unlimited" inputmode="numeric">
+                </label>
+                <label for="child-<%= child.id %>-watch-limit">
+                  <span>Daily video watch limit</span>
+                  <input id="child-<%= child.id %>-watch-limit" name="dailyVideoWatchLimit" type="number" min="1" step="1" value="<%= child.daily_video_watch_limit || '' %>" placeholder="Unlimited" inputmode="numeric">
+                  <small class="muted">Saved now; enforcement begins when KidView tracks playback.</small>
+                </label>
+              </div>
+              <div class="button-row">
+                <button class="primary-button" type="submit">Save child profile</button>
+              </div>
+            </form>
+          </details>
+        <% }) %>
+
+        <% if (!management.children.length) { %>
+          <p class="panel muted">No child profiles yet. Add one below.</p>
+        <% } %>
+
+        <details class="panel management-editor">
+          <summary class="management-summary new-summary">
+            <span class="management-summary-text add-new">
+              <strong>Add child profile</strong>
+              <span class="muted">Create another household child profile.</span>
+            </span>
+          </summary>
+
+          <% if (!management.policies.length) { %>
+            <p class="form-error" role="alert">Create a result policy before adding a child profile.</p>
+          <% } else { %>
+            <form class="stacked-form management-form" action="/parent/profiles/children" method="post">
+              <div class="management-form-grid">
+                <label for="new-child-name">
+                  <span>Profile name</span>
+                  <input id="new-child-name" name="displayName" maxlength="80" autocomplete="off" required>
+                </label>
+                <label for="new-child-birth-year">
+                  <span>Birth year <small>(optional)</small></span>
+                  <input id="new-child-birth-year" name="birthYear" type="number" min="1900" max="<%= new Date().getFullYear() %>" inputmode="numeric">
+                </label>
+                <label for="new-child-policy">
+                  <span>Result policy</span>
+                  <select id="new-child-policy" name="policyProfileId" required>
+                    <% management.policies.forEach((policy) => { %>
+                      <option value="<%= policy.id %>"><%= policy.name %> · up to <%= policy.max_results %> result<%= policy.max_results === 1 ? '' : 's' %></option>
+                    <% }) %>
+                  </select>
+                </label>
+                <label for="new-child-limited-policy">
+                  <span>Limited-access videos</span>
+                  <select id="new-child-limited-policy" name="allowLimitedPolicy" data-limited-policy-select required>
+                    <option value="block">Keep hidden</option>
+                    <option value="review">Send to parent review</option>
+                    <option value="limited_frequency">Allow at most one strong result</option>
+                    <option value="allow">Allow with regular results</option>
+                  </select>
+                </label>
+                <label for="new-child-confidence" data-limited-confidence-field>
+                  <span>Minimum confidence (%)</span>
+                  <input id="new-child-confidence" name="allowLimitedMinConfidencePercent" type="number" min="0" max="100" step="1" value="70" inputmode="numeric" required>
+                  <small class="muted">Used only when allowing at most one strong limited result.</small>
+                </label>
+                <label for="new-child-search-limit">
+                  <span>Daily search limit</span>
+                  <input id="new-child-search-limit" name="dailySearchLimit" type="number" min="1" step="1" placeholder="Unlimited" inputmode="numeric">
+                </label>
+                <label for="new-child-watch-limit">
+                  <span>Daily video watch limit</span>
+                  <input id="new-child-watch-limit" name="dailyVideoWatchLimit" type="number" min="1" step="1" placeholder="Unlimited" inputmode="numeric">
+                  <small class="muted">Saved now; enforcement begins when KidView tracks playback.</small>
+                </label>
+              </div>
+              <div class="button-row">
+                <button class="primary-button" type="submit">Create child profile</button>
+              </div>
+            </form>
+          <% } %>
+        </details>
+      </div>
+    </section>
+
+    <section id="policies" aria-labelledby="policies-heading">
+      <div class="section-heading-row">
+        <div>
+          <h2 id="policies-heading">Result policies</h2>
+          <p class="muted">Reuse a result cap across children. Editing a shared policy affects every child assigned to it.</p>
+        </div>
+        <span class="count-pill"><%= management.policies.length %></span>
+      </div>
+
+      <div class="management-list">
+        <% management.policies.forEach((policy) => { %>
+          <details class="panel management-editor" id="policy-<%= policy.id %>">
+            <summary class="management-summary" title="Edit <%= policy.name %>">
+              <span class="management-summary-text">
+                <strong><%= policy.name %></strong>
+                <span class="muted">Up to <%= policy.max_results %> result<%= policy.max_results === 1 ? '' : 's' %> · <%= policy.child_count %> child profile<%= policy.child_count === 1 ? '' : 's' %></span>
+              </span>
+            </summary>
+
+            <% if (policy.description) { %><p class="muted compact-note"><%= policy.description %></p><% } %>
+            <% if (policy.child_count) { %>
+              <p class="review-reason compact-note"><strong>Affects:</strong> <%= policy.child_names %>. Saving changes updates their result cap.</p>
+            <% } %>
+            <form class="stacked-form management-form" action="/parent/profiles/policies/<%= policy.id %>" method="post">
+              <div class="management-form-grid">
+                <label for="policy-<%= policy.id %>-name">
+                  <span>Policy name</span>
+                  <input id="policy-<%= policy.id %>-name" name="name" value="<%= policy.name %>" maxlength="80" required>
+                </label>
+                <label for="policy-<%= policy.id %>-max-results">
+                  <span>Results per search</span>
+                  <select id="policy-<%= policy.id %>-max-results" name="maxResults" required>
+                    <% [1, 2, 3].forEach((count) => { %>
+                      <option value="<%= count %>" <%= policy.max_results === count ? 'selected' : '' %>>Up to <%= count %> video<%= count === 1 ? '' : 's' %></option>
+                    <% }) %>
+                  </select>
+                </label>
+                <label class="management-full-width" for="policy-<%= policy.id %>-description">
+                  <span>Description <small>(optional)</small></span>
+                  <textarea id="policy-<%= policy.id %>-description" name="description" maxlength="300" rows="3"><%= policy.description || '' %></textarea>
+                </label>
+              </div>
+              <div class="button-row">
+                <button class="primary-button" type="submit">Save result policy</button>
+              </div>
+            </form>
+          </details>
+        <% }) %>
+
+        <details class="panel management-editor">
+          <summary class="management-summary new-summary">
+            <span class="management-summary-text  add-new">
+              <strong>Add result policy</strong>
+              <span class="muted">Create another reusable result cap.</span>
+            </span>
+          </summary>
+          <form class="stacked-form management-form" action="/parent/profiles/policies" method="post">
+            <div class="management-form-grid">
+              <label for="new-policy-name">
+                <span>Policy name</span>
+                <input id="new-policy-name" name="name" maxlength="80" required>
+              </label>
+              <label for="new-policy-max-results">
+                <span>Results per search</span>
+                <select id="new-policy-max-results" name="maxResults" required>
+                  <option value="1">Up to 1 video</option>
+                  <option value="2">Up to 2 videos</option>
+                  <option value="3" selected>Up to 3 videos</option>
+                </select>
+              </label>
+              <label class="management-full-width" for="new-policy-description">
+                <span>Description <small>(optional)</small></span>
+                <textarea id="new-policy-description" name="description" maxlength="300" rows="3"></textarea>
+              </label>
+            </div>
+            <div class="button-row">
+              <button class="primary-button" type="submit">Create result policy</button>
+            </div>
+          </form>
+        </details>
+      </div>
+    </section>
+
+    <section aria-labelledby="fixed-rules-heading">
+      <h2 id="fixed-rules-heading">KidView format protections</h2>
+      <p class="muted">Shorts, live or upcoming streams, and non-embeddable videos stay blocked for every child. These protections are not household settings.</p>
+    </section>
+  </div>
+</main>
+
+<%- include('../partials/footer') %>
