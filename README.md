@@ -126,7 +126,18 @@ The parent **Profiles & Policies** page at `/parent/profiles` supports:
 
 The parent UI derives a short content-posture summary from `allow_limited_policy`: more restricted, parent-reviewed, balanced, or broader access. These are explanatory labels, not additional stored policy values or a numeric safety score. Usage limits remain visually separate from content posture.
 
-Policy and child-profile deletion is deliberately excluded from this first management flow. Durable video and channel decisions also remain household-wide. The current child-facing routes still use the first child profile; selecting or establishing an active child profile is a separate child-experience milestone.
+Policy and child-profile deletion is deliberately excluded from this first management flow. Durable video and channel decisions also remain household-wide.
+
+### Child Profile Activation
+
+Child profiles are not login accounts. A parent establishes the active child profile for the current browser from `/child/profile`:
+
+1. KidView requires the parent to log in before it lists household child profiles.
+2. The parent chooses one profile owned by that household.
+3. KidView stores the choice in a signed, HTTP-only, same-site cookie for 30 days, signs the parent out, and returns to child search.
+4. Child search, results, playback placeholders, moderation, and audit records use that active profile until a parent switches it or the cookie expires.
+
+The signed cookie contains only household and child-profile IDs plus its issue time. Every request rechecks that the child still belongs to the household, and an invalid, expired, deleted, or mismatched selection returns the browser to the profile setup flow. KidView never falls back to the first child profile in the database. Switching profiles requires parent authentication again, which keeps profile names and household controls out of the unauthenticated child experience.
 
 ## Testing The Fixture Review Flow
 
@@ -306,14 +317,16 @@ For browser-level validation after running the automated regression suite:
    VIDEO_SOURCE=mock npm run dev
    ```
 
-4. Search as a child for `science`, `animation`, `drama`, and `otters`.
-5. Confirm child-visible results are capped at three and use local category icons.
-6. Confirm hard-blocked items, Shorts, live/upcoming streams, review, and unknown items do not appear to children. Confirm `allow_limited` follows the selected child profile policy.
-7. Confirm a zero-result child search appears in `/parent/searches` when the zero-result view is selected.
-8. Open the audit detail page and confirm candidates are grouped into shown, review, hidden, hard-blocked, and limited sections.
-9. Confirm `/parent/decisions` still allows editing video and channel decisions.
-10. Confirm moderation explanations display read-only and do not prefill editable parent notes.
-11. Inspect the database enough to confirm raw YouTube API responses, transcripts, and thumbnails are not persisted.
+4. Open `/child/search`, log in when prompted, choose the seeded child profile, and confirm the parent session is signed out before child search appears.
+5. Search as a child for `science`, `animation`, `drama`, and `otters`.
+6. Confirm the selected child name appears on search, results, and playback placeholder pages.
+7. Confirm child-visible results respect the selected profile's one-to-three result cap and use local category icons.
+8. Confirm hard-blocked items, Shorts, live/upcoming streams, review, and unknown items do not appear to children. Confirm `allow_limited` follows the selected child profile policy.
+9. Confirm a zero-result child search appears in `/parent/searches` when the zero-result view is selected.
+10. Open the audit detail page and confirm candidates are grouped into shown, review, hidden, hard-blocked, and limited sections.
+11. Confirm `/parent/decisions` still allows editing video and channel decisions.
+12. Confirm moderation explanations display read-only and do not prefill editable parent notes.
+13. Inspect the database enough to confirm raw YouTube API responses, transcripts, and thumbnails are not persisted.
 
 Useful searches to try with the YouTube source:
 
@@ -343,7 +356,6 @@ Then restart the app.
 
 ## Planned Features
 
-- Child profile selection: replace the current first-profile child flow with an explicit, safe way to establish the active child profile.
 - Search-audit override actions: let a parent create an exact video decision directly from an audited candidate while preserving format guardrails.
 - Safe playback and usage accounting: replace placeholder watch pages with embedded playback and add the watch events needed to enforce future daily limits.
 
