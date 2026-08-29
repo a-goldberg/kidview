@@ -450,6 +450,17 @@ textarea {
   cursor: pointer;
 }
 
+.new-summary > .management-summary-text {
+  color: var(--surface);
+  padding: 0 0.5em;
+  background-color: var(--brand);
+  border-radius: 5px;
+}
+
+.add-new > .muted {
+  color: var(--surface);
+}
+
 .management-summary-text {
   display: inline-grid;
   max-width: calc(100% - 1.5rem);

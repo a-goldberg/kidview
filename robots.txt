@@ -1,0 +1,32 @@
+# Search crawlers may fetch the page only to read its noindex directive.
+User-agent: Googlebot
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
+User-agent: DuckDuckBot
+Allow: /
+
+# User-triggered and social preview fetchers.
+User-agent: GoogleMessages
+Allow: /
+
+User-agent: facebookexternalhit
+Allow: /
+
+User-agent: Facebot
+Allow: /
+
+User-agent: WhatsApp
+Allow: /
+
+User-agent: Twitterbot
+Allow: /
+
+User-agent: Applebot
+Allow: /
+
+# Block other well-behaved automated crawlers.
+User-agent: *
+Disallow: /
