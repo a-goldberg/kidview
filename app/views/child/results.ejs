@@ -5,7 +5,8 @@
   <section class="page-heading">
     <p class="eyebrow">Search results</p>
     <h1><%= query ? query : 'Search' %></h1>
-    <p class="muted">KidView shows up to three choices at a time.</p>
+    <% const resultLimit = Number(childProfile && childProfile.maxResults) || 3; %>
+    <p class="muted">KidView shows up to <%= resultLimit %> choice<%= resultLimit === 1 ? '' : 's' %> at a time.</p>
   </section>
 
   <% if (!query) { %>

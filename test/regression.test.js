@@ -3,6 +3,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
+const ejs = require("ejs");
 
 const testDbPath = path.join(os.tmpdir(), `kidview-regression-${process.pid}.sqlite`);
 
@@ -474,6 +475,30 @@ test("policy profile result cap controls child search", async () => {
       maxResults: 3,
     });
   }
+});
+
+test("child results copy reflects the assigned policy result cap", async () => {
+  const templatePath = path.join(__dirname, "../app/views/child/results.ejs");
+  const baseView = {
+    title: "KidView Results",
+    currentParent: null,
+    query: "science",
+    searchEventId: null,
+    candidatesConsidered: 0,
+    suggestions: [],
+    results: [],
+  };
+  const oneResultHtml = await ejs.renderFile(templatePath, {
+    ...baseView,
+    childProfile: { displayName: "Test Child", maxResults: 1 },
+  });
+  const twoResultHtml = await ejs.renderFile(templatePath, {
+    ...baseView,
+    childProfile: { displayName: "Test Child", maxResults: 2 },
+  });
+
+  assert.match(oneResultHtml, /KidView shows up to 1 choice at a time\./);
+  assert.match(twoResultHtml, /KidView shows up to 2 choices at a time\./);
 });
 
 test("parent video allow overrides moderation for a specific video", async () => {
