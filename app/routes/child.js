@@ -1,7 +1,12 @@
 const express = require('express');
 const { markNotWhatIMeant, recordClickedVideo, search } = require('../services/searchService');
-const { getFirstChildProfile } = require('../services/householdService');
 const { getChildSafeVideo } = require('../services/moderationService');
+const {
+  getActiveChildProfile,
+  getChildProfileForHousehold,
+  listChildProfilesForHousehold,
+  setActiveChildProfile
+} = require('../services/childProfileSessionService');
 
 const router = express.Router();
 const SEARCH_SUGGESTIONS = ['science', 'otters', 'fractions', 'animation'];
@@ -10,8 +15,73 @@ function resultsUrl(query) {
   return `/child/results?q=${encodeURIComponent(query)}`;
 }
 
-router.get('/search', (req, res) => {
-  const childProfile = getFirstChildProfile();
+function requireParentForProfileSelection(req, res, next) {
+  if (!req.session.parentUser) {
+    return res.redirect('/auth/login?returnTo=%2Fchild%2Fprofile');
+  }
+
+  return next();
+}
+
+function requireActiveChild(req, res, next) {
+  const childProfile = getActiveChildProfile(req);
+
+  if (!childProfile) {
+    if (req.method === 'GET' && req.path === '/search') {
+      return res.render('child/profile-required', {
+        title: 'Choose a Child Profile'
+      });
+    }
+
+    return res.redirect('/child/search');
+  }
+
+  req.activeChildProfile = childProfile;
+  return next();
+}
+
+router.get('/profile', requireParentForProfileSelection, (req, res) => {
+  const childProfiles = listChildProfilesForHousehold(
+    req.session.parentUser.householdId
+  );
+
+  res.render('child/profile-select', {
+    title: 'Choose a Child Profile',
+    childProfiles
+  });
+});
+
+router.post('/profile/:childProfileId/activate', requireParentForProfileSelection, (req, res, next) => {
+  const parentUser = req.session.parentUser;
+  const childProfile = getChildProfileForHousehold({
+    householdId: parentUser.householdId,
+    childProfileId: Number(req.params.childProfileId)
+  });
+
+  if (!childProfile) {
+    return res.status(404).render('not-found', {
+      title: 'Child profile not found'
+    });
+  }
+
+  const sessionCookieName = res.locals.sessionCookieName;
+
+  return req.session.destroy((error) => {
+    if (error) {
+      return next(error);
+    }
+
+    res.clearCookie(sessionCookieName);
+    setActiveChildProfile(res, {
+      householdId: parentUser.householdId,
+      childProfileId: childProfile.id
+    });
+    return res.redirect('/child/search');
+  });
+});
+
+router.get('/search', requireActiveChild, (req, res) => {
+  const childProfile = req.activeChildProfile;
 
   res.render('child/search', {
     title: 'KidView Search',
@@ -22,8 +92,8 @@ router.get('/search', (req, res) => {
   });
 });
 
-router.get('/results', async (req, res, next) => {
-  const childProfile = getFirstChildProfile();
+router.get('/results', requireActiveChild, async (req, res, next) => {
+  const childProfile = req.activeChildProfile;
   const query = String(req.query.q || '').trim();
 
   try {
@@ -54,8 +124,8 @@ router.get('/results', async (req, res, next) => {
   }
 });
 
-router.get('/videos/:videoId', (req, res) => {
-  const childProfile = getFirstChildProfile();
+router.get('/videos/:videoId', requireActiveChild, (req, res) => {
+  const childProfile = req.activeChildProfile;
   const query = String(req.query.q || '').trim();
   const searchEventId = Number(req.query.searchEventId || 0);
   const videoId = Number(req.params.videoId);
@@ -89,8 +159,8 @@ router.get('/videos/:videoId', (req, res) => {
   });
 });
 
-router.post('/search-events/:searchEventId/not-what-i-meant', (req, res) => {
-  const childProfile = getFirstChildProfile();
+router.post('/search-events/:searchEventId/not-what-i-meant', requireActiveChild, (req, res) => {
+  const childProfile = req.activeChildProfile;
   const query = String(req.body.query || '').trim();
 
   if (childProfile) {

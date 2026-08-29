@@ -50,6 +50,7 @@ withMutedConsole(() => {
 const db = require("../app/db/database");
 const config = require("../app/config");
 const decisionService = require("../app/services/decisionService");
+const childProfileSessionService = require("../app/services/childProfileSessionService");
 const policyService = require("../app/services/policyService");
 const searchService = require("../app/services/searchService");
 const youtubeSourceService = require("../app/services/youtubeSourceService");
@@ -431,6 +432,82 @@ test("policy management rejects duplicate names and cross-household assignment",
       dailyVideoWatchLimit: null,
     }),
     /from this household/,
+  );
+});
+
+test("active child profile token is signed, expiring, and household-scoped", () => {
+  const child = childProfile();
+  const token = childProfileSessionService.createActiveChildToken({
+    householdId: child.household_id,
+    childProfileId: child.id,
+  });
+  const activeChild = childProfileSessionService.getActiveChildProfile({
+    headers: {
+      cookie: `${childProfileSessionService.ACTIVE_CHILD_COOKIE_NAME}=${encodeURIComponent(token)}`,
+    },
+  });
+  const tamperedToken = `${token.slice(0, -1)}${token.endsWith("a") ? "b" : "a"}`;
+  const expiredToken = childProfileSessionService.createActiveChildToken({
+    householdId: child.household_id,
+    childProfileId: child.id,
+    issuedAt: Date.now() - childProfileSessionService.ACTIVE_CHILD_MAX_AGE_MS - 1,
+  });
+  const wrongHouseholdToken = childProfileSessionService.createActiveChildToken({
+    householdId: child.household_id + 999,
+    childProfileId: child.id,
+  });
+
+  assert.equal(activeChild.id, child.id);
+  assert.equal(activeChild.householdId, child.household_id);
+  assert.equal(
+    childProfileSessionService.parseActiveChildToken(tamperedToken),
+    null,
+  );
+  assert.equal(
+    childProfileSessionService.parseActiveChildToken(expiredToken),
+    null,
+  );
+  assert.equal(
+    childProfileSessionService.getActiveChildProfile({
+      headers: {
+        cookie: `${childProfileSessionService.ACTIVE_CHILD_COOKIE_NAME}=${wrongHouseholdToken}`,
+      },
+    }),
+    null,
+  );
+});
+
+test("profile chooser lists only children from the authenticated household", () => {
+  const child = childProfile();
+  const otherHousehold = db
+    .prepare("INSERT INTO households (name) VALUES ('Chooser Other Household') RETURNING id")
+    .get();
+  const otherPolicy = policyService.createPolicyProfile({
+    householdId: otherHousehold.id,
+    name: "Chooser other policy",
+    description: null,
+    maxResults: 2,
+  });
+
+  policyService.createChildProfile({
+    householdId: otherHousehold.id,
+    policyProfileId: otherPolicy.id,
+    displayName: "Other Household Child",
+    birthYear: null,
+    allowLimitedPolicy: "block",
+    allowLimitedMinConfidence: 0.7,
+    dailySearchLimit: null,
+    dailyVideoWatchLimit: null,
+  });
+
+  const householdChildren = childProfileSessionService.listChildProfilesForHousehold(
+    child.household_id,
+  );
+
+  assert.ok(householdChildren.some((profile) => profile.id === child.id));
+  assert.equal(
+    householdChildren.some((profile) => profile.displayName === "Other Household Child"),
+    false,
   );
 });
 

@@ -45,6 +45,8 @@ This keeps tests useful without adding a new framework, a browser dependency, or
 | Invalid policy values are rejected | Submit an invalid result cap, policy name, or zero daily limit | Policy service throws a validation error and writes nothing. |
 | Parent policy management persists profiles | Create and update a result policy and child profile through `policyService` | Assignment, names, limits, result cap, and derived posture reflect the saved values. |
 | Parent policy management protects household scope | Reuse a policy name and attempt to assign another household's policy | Duplicate household policy name and cross-household assignment are rejected. |
+| Active child token is signed and expires | Create valid, tampered, and expired child-selection tokens | Only the valid token resolves an active child profile. |
+| Active child selection is household-scoped | Resolve a child with a token naming the wrong household; list profiles for the demo household | The mismatched token resolves no child, and the chooser excludes another household's child. |
 | Parent video allow overrides moderation | Update seeded Rick Astley video decision to `allow`; search `Rick Astley` | Video appears despite normal moderation signals. |
 | Parent video block hides result | Update Be Smart blue/nature video decision to `block`; search `blue rare nature` | Video is hidden. |
 | Approved channel boosts result | Search `otters` | Deep Blue Science result is allowed and tagged with `household-approved-channel`. |
@@ -85,5 +87,7 @@ After running the app locally, these searches should stay useful for parent-faci
 - Enforcement of configured daily search and watch limits.
 
 The parent Profiles & Policies page also has a manual responsive check: confirm collapsed summaries, expanded forms, conditional confidence input, affected-child copy, keyboard focus, save feedback, and single-column mobile layout.
+
+The child-profile handoff has a manual browser check: begin without an active child selection, confirm search asks for parent setup without exposing profile names, log in, choose a household child, and confirm KidView signs the parent out before showing child search. Confirm the selected name appears throughout the child flow, the profile's result cap controls both results and explanatory copy, and **Switch profile** requires parent authentication again.
 
 Those are good candidates for later test layers. For now, keep this suite fast, local, and boring enough to run before most changes.
