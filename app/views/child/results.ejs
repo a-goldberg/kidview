@@ -7,6 +7,7 @@
     <h1><%= query ? query : 'Search' %></h1>
     <% const resultLimit = Number(childProfile && childProfile.maxResults) || 3; %>
     <p class="muted">KidView shows up to <%= resultLimit %> choice<%= resultLimit === 1 ? '' : 's' %> at a time.</p>
+    <%- include('profile-context', { childProfile }) %>
   </section>
 
   <% if (!query) { %>

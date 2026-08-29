@@ -19,7 +19,7 @@
       <% }) %>
     </div>
     <% if (childProfile) { %>
-      <p class="muted">Searching for <%= childProfile.displayName %>.</p>
+      <%- include('profile-context', { childProfile }) %>
     <% } %>
   </section>
 </main>

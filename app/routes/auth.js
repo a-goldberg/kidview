@@ -3,15 +3,20 @@ const { authenticateParent } = require('../services/authService');
 
 const router = express.Router();
 
+function loginDestination(value) {
+  return value === '/child/profile' ? '/child/profile' : '/parent';
+}
+
 router.get('/login', (req, res) => {
   if (req.session.parentUser) {
-    return res.redirect('/parent');
+    return res.redirect(loginDestination(req.query.returnTo));
   }
 
   return res.render('auth/login', {
     title: 'Parent Login',
     error: null,
-    email: ''
+    email: '',
+    returnTo: req.query.returnTo === '/child/profile' ? '/child/profile' : ''
   });
 });
 
@@ -25,7 +30,8 @@ router.post('/login', async (req, res, next) => {
       return res.status(401).render('auth/login', {
         title: 'Parent Login',
         error: 'Email or password did not match.',
-        email
+        email,
+        returnTo: req.body.returnTo === '/child/profile' ? '/child/profile' : ''
       });
     }
 
@@ -40,7 +46,7 @@ router.post('/login', async (req, res, next) => {
           return next(saveError);
         }
 
-        return res.redirect('/parent');
+        return res.redirect(loginDestination(req.body.returnTo));
       });
     });
   } catch (error) {

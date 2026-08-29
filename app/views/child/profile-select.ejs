@@ -1,0 +1,29 @@
+<%- include('../partials/head', { title }) %>
+<%- include('../partials/header') %>
+
+<main class="page narrow-page">
+  <section class="panel">
+    <p class="eyebrow">Parent setup</p>
+    <h1>Who is using KidView?</h1>
+    <p class="muted">Choose one profile for this browser. KidView will sign out of parent controls before returning to child search.</p>
+
+    <% if (childProfiles.length) { %>
+      <ul class="simple-list">
+        <% childProfiles.forEach((childProfile) => { %>
+          <li>
+            <strong><%= childProfile.displayName %></strong>
+            <span><%= childProfile.policyProfileName || 'Default policy' %> · up to <%= childProfile.maxResults %> choice<%= childProfile.maxResults === 1 ? '' : 's' %></span>
+            <form action="/child/profile/<%= childProfile.id %>/activate" method="post">
+              <button class="primary-button" type="submit">Use KidView as <%= childProfile.displayName %></button>
+            </form>
+          </li>
+        <% }) %>
+      </ul>
+    <% } else { %>
+      <p class="form-error" role="alert">This household does not have a child profile yet.</p>
+      <a class="secondary-button" href="/parent/profiles">Create child profile</a>
+    <% } %>
+  </section>
+</main>
+
+<%- include('../partials/footer') %>

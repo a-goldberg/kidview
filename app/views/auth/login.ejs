@@ -5,13 +5,14 @@
   <section class="panel">
     <p class="eyebrow">Parent area</p>
     <h1>Log in</h1>
-    <p class="muted">Use the seeded parent account to view household controls.</p>
+    <p class="muted"><%= returnTo ? 'Log in to choose who will use KidView on this device.' : 'Use the seeded parent account to view household controls.' %></p>
 
     <% if (error) { %>
       <p class="form-error" role="alert"><%= error %></p>
     <% } %>
 
     <form class="stacked-form" action="/auth/login" method="post">
+      <% if (returnTo) { %><input type="hidden" name="returnTo" value="<%= returnTo %>"><% } %>
       <label>
         <span>Email</span>
         <input name="email" type="email" autocomplete="email" value="<%= email %>" required>
