@@ -9,22 +9,6 @@ function parseLabels(labelsJson) {
   }
 }
 
-function getFirstChildProfile() {
-  return db
-    .prepare(
-      `SELECT
-        child_profiles.id,
-        child_profiles.household_id AS householdId,
-        child_profiles.display_name AS displayName,
-        policy_profiles.max_results AS maxResults
-       FROM child_profiles
-       LEFT JOIN policy_profiles ON policy_profiles.id = child_profiles.policy_profile_id
-       ORDER BY child_profiles.id
-       LIMIT 1`
-    )
-    .get();
-}
-
 function getParentDashboard(householdId) {
   const household = db.prepare('SELECT * FROM households WHERE id = ?').get(householdId);
   const children = db
@@ -661,7 +645,6 @@ function sortDecisionRows(rows, sort) {
 }
 
 module.exports = {
-  getFirstChildProfile,
   getParentDashboard,
   getReviewQueue,
   getDecisionHistory,
