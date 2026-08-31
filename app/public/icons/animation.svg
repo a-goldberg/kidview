@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="Film and animation">
+  <rect width="96" height="96" rx="16" fill="#855b9d"/>
+  <rect x="23" y="28" width="50" height="40" rx="5" fill="#ffffff"/>
+  <path d="M39 38l20 10-20 10z" fill="#855b9d"/>
+</svg>

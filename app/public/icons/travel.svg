@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="Travel">
+  <rect width="96" height="96" rx="16" fill="#3d8a8d"/>
+  <path d="M48 20c-12 0-21 9-21 21 0 15 21 35 21 35s21-20 21-35c0-12-9-21-21-21z" fill="#ffffff"/>
+  <circle cx="48" cy="41" r="7" fill="#3d8a8d"/>
+</svg>

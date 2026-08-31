@@ -1,80 +1,71 @@
-const db = require('../db/database');
-const config = require('../config');
-const mockVideoSourceService = require('./mockVideoSourceService');
-const moderationService = require('./moderationService');
-const { getChildPolicy } = require('./policyService');
-const youtubeSourceService = require('./youtubeSourceService');
-
-const CATEGORY_RULES = [
-  {
-    pattern: /animal|biology|blue|cat|nature|ocean|otter|rainforest|sea/i,
-    primaryCategory: 'Animals',
-    iconKey: 'animals'
-  },
-  {
-    pattern: /animation|art|build|craft|draw|pixar|slime|toy|treehouse/i,
-    primaryCategory: 'Art',
-    iconKey: 'art'
-  },
-  {
-    pattern: /fraction|history|math|physics|science|water|weapon/i,
-    primaryCategory: 'Science',
-    iconKey: 'science'
-  }
-];
+const db = require("../db/database");
+const config = require("../config");
+const mockVideoSourceService = require("./mockVideoSourceService");
+const moderationService = require("./moderationService");
+const {
+  classifyCandidateCategory,
+} = require("./categoryClassificationService");
+const { getChildPolicy } = require("./policyService");
+const youtubeSourceService = require("./youtubeSourceService");
 
 function classifyCandidate(candidate) {
-  const haystack = [
-    candidate.title,
-    candidate.description,
-    candidate.channelTitle,
-    candidate.primaryCategoryHint
-  ]
+  const text = [candidate.title, candidate.description, candidate.channelTitle]
     .filter(Boolean)
-    .join(' ');
-  const matchedRule = CATEGORY_RULES.find((rule) => rule.pattern.test(haystack));
+    .join(" ");
   const labels = [];
-  const liveStatus = candidate.liveStatus || (candidate.isLivestream ? 'completed_live' : 'none');
+  const liveStatus =
+    candidate.liveStatus ||
+    (candidate.isLivestream ? "completed_live" : "none");
 
-  if (candidate.isShort) labels.push('short');
-  if (liveStatus === 'live') labels.push('live');
-  if (liveStatus === 'upcoming') labels.push('upcoming-live');
-  if (liveStatus === 'completed_live') labels.push('completed-live');
-  if (!candidate.embeddable) labels.push('not-embeddable');
-  if (/math|fraction|science|nature|history|animation|biology/i.test(haystack)) labels.push('learning');
-  if (/dangerous|stunt|weapon|flamethrower|poison|toxin/i.test(haystack)) labels.push('needs-care');
-  if (/toy|slime|surprise|mystery|won't believe|do not try/i.test(haystack)) labels.push('high-stimulation');
+  if (candidate.isShort) labels.push("short");
+  if (liveStatus === "live") labels.push("live");
+  if (liveStatus === "upcoming") labels.push("upcoming-live");
+  if (liveStatus === "completed_live") labels.push("completed-live");
+  if (!candidate.embeddable) labels.push("not-embeddable");
+  if (/math|fraction|science|nature|history|animation|biology/i.test(text))
+    labels.push("learning");
+  if (/dangerous|stunt|weapon|flamethrower|poison|toxin/i.test(text))
+    labels.push("needs-care");
+  if (/toy|slime|surprise|mystery|won't believe|do not try/i.test(text))
+    labels.push("high-stimulation");
 
   return {
-    primaryCategory: matchedRule ? matchedRule.primaryCategory : 'General',
-    iconKey: matchedRule ? matchedRule.iconKey : 'general',
-    labels
+    ...classifyCandidateCategory(candidate),
+    labels,
   };
 }
 
 function confidenceFor(candidate) {
-  const liveStatus = candidate.liveStatus || (candidate.isLivestream ? 'completed_live' : 'none');
+  const liveStatus =
+    candidate.liveStatus ||
+    (candidate.isLivestream ? "completed_live" : "none");
 
-  if (candidate.isShort || liveStatus === 'live' || liveStatus === 'upcoming' || !candidate.embeddable) return 0.35;
-  if (liveStatus === 'completed_live') return 0.5;
+  if (
+    candidate.isShort ||
+    liveStatus === "live" ||
+    liveStatus === "upcoming" ||
+    !candidate.embeddable
+  )
+    return 0.35;
+  if (liveStatus === "completed_live") return 0.5;
   if (candidate.primaryCategoryHint) return 0.7;
   return 0.6;
 }
 
 function childExplanationFor(candidate, classification) {
-  if (classification.primaryCategory === 'Animals') {
-    return 'A KidView candidate about nature, animals, or the world around us.';
+  if (classification.iconKey === "animals") {
+    return "A KidView candidate about nature, animals, or the world around us.";
   }
 
-  if (classification.primaryCategory === 'Science') {
-    return 'A KidView candidate that explains an idea in a simple way.';
+  if (["education", "science"].includes(classification.iconKey)) {
+    return "A KidView candidate that explains an idea in a simple way.";
   }
 
-  if (classification.primaryCategory === 'Art') {
-    return 'A KidView candidate about making, building, or animation.';
+  if (["animation", "art", "making"].includes(classification.iconKey)) {
+    return "A KidView candidate about making, building, or animation.";
   }
 
-  return 'A KidView candidate waiting for household review.';
+  return "A KidView-approved video.";
 }
 
 function upsertSourceCandidates(candidates) {
@@ -88,7 +79,7 @@ function upsertSourceCandidates(candidates) {
      ON CONFLICT(source, external_id) DO UPDATE SET
       title = excluded.title,
       updated_at = CURRENT_TIMESTAMP
-     RETURNING id`
+     RETURNING id`,
   );
   const insertVideo = db.prepare(
     `INSERT INTO videos (
@@ -108,9 +99,12 @@ function upsertSourceCandidates(candidates) {
       is_livestream,
       live_status,
       published_at,
-      view_count
+      view_count,
+      youtube_category_id,
+      youtube_category_title,
+      made_for_kids
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(source, external_id) DO UPDATE SET
       channel_id = excluded.channel_id,
       title = excluded.title,
@@ -127,8 +121,11 @@ function upsertSourceCandidates(candidates) {
       live_status = excluded.live_status,
       published_at = excluded.published_at,
       view_count = excluded.view_count,
+      youtube_category_id = excluded.youtube_category_id,
+      youtube_category_title = excluded.youtube_category_title,
+      made_for_kids = excluded.made_for_kids,
       updated_at = CURRENT_TIMESTAMP
-    RETURNING id`
+    RETURNING id`,
   );
   const selectCandidate = db.prepare(
     `SELECT
@@ -147,22 +144,27 @@ function upsertSourceCandidates(candidates) {
       videos.live_status AS liveStatus,
       videos.published_at AS publishedAt,
       videos.view_count AS viewCount,
+      videos.youtube_category_id AS youtubeCategoryId,
+      videos.youtube_category_title AS youtubeCategoryTitle,
+      videos.made_for_kids AS madeForKids,
       channels.id AS channelId,
       channels.title AS channelTitle
      FROM videos
      JOIN channels ON channels.id = videos.channel_id
-     WHERE videos.id = ?`
+     WHERE videos.id = ?`,
   );
 
   return db.transaction(() =>
     candidates
       .filter((candidate) => candidate.embeddable)
       .map((candidate) => {
-        const liveStatus = candidate.liveStatus || (candidate.isLivestream ? 'completed_live' : 'none');
+        const liveStatus =
+          candidate.liveStatus ||
+          (candidate.isLivestream ? "completed_live" : "none");
         const channel = insertChannel.get(
           candidate.source,
           candidate.channelExternalId,
-          candidate.channelTitle
+          candidate.channelTitle,
         );
         const classification = classifyCandidate(candidate);
         const video = insertVideo.get(
@@ -170,26 +172,29 @@ function upsertSourceCandidates(candidates) {
           candidate.source,
           candidate.externalVideoId,
           candidate.title,
-          candidate.description || '',
+          candidate.description || "",
           candidate.durationSeconds || 0,
           classification.primaryCategory,
           classification.iconKey,
           JSON.stringify(classification.labels),
           confidenceFor(candidate),
           childExplanationFor(candidate, classification),
-          'No household decision has been made yet.',
+          "No household decision has been made yet.",
           candidate.isShort ? 1 : 0,
-          liveStatus === 'none' ? 0 : 1,
+          liveStatus === "none" ? 0 : 1,
           liveStatus,
           candidate.publishedAt || null,
-          Number(candidate.viewCount || 0)
+          Number(candidate.viewCount || 0),
+          candidate.youtubeCategoryId || null,
+          candidate.youtubeCategoryTitle || null,
+          candidate.madeForKids ? 1 : 0,
         );
 
         return {
           ...selectCandidate.get(video.id),
-          sourceRank: candidate.sourceRank || null
+          sourceRank: candidate.sourceRank || null,
         };
-      })
+      }),
   )();
 }
 
@@ -198,56 +203,116 @@ function sourceRejectedAuditCandidate(candidate) {
     videoId: null,
     channelId: null,
     sourceRank: candidate.sourceRank || null,
-    title: candidate.title || 'Untitled video',
+    title: candidate.title || "Untitled video",
     channelTitle: candidate.channelTitle || null,
-    finalDecision: 'block',
+    finalDecision: "block",
     shownToChild: false,
-    visibilityReasonCode: 'source_filter:not_embeddable',
-    visibilityReason: 'Hidden because the source candidate could not be safely embedded in KidView.',
-    hardBlockReason: 'Filtered because non-embeddable videos are not allowed for child search.',
+    visibilityReasonCode: "source_filter:not_embeddable",
+    visibilityReason:
+      "Hidden because the source candidate could not be safely embedded in KidView.",
+    hardBlockReason:
+      "Filtered because non-embeddable videos are not allowed for child search.",
     contentTags: [],
-    riskTags: ['not-embeddable'],
+    riskTags: ["not-embeddable"],
     qualityTags: [],
-    moderationSource: 'source_filter',
+    moderationSource: "source_filter",
     parentDecisionSource: null,
     parentDecisionAffected: false,
-    reviewQueueState: 'none',
-    reviewQueueReasonCode: 'source_filter:not_embeddable'
+    reviewQueueState: "none",
+    reviewQueueReasonCode: "source_filter:not_embeddable",
   };
 }
 
-async function getSourceCandidates(query) {
-  if (config.videoSource === 'youtube') {
-    const youtubeCandidates = (await youtubeSourceService.searchCandidates(query)).map(
-      (candidate, index) => ({
-        ...candidate,
-        sourceRank: index + 1
-      })
+async function getYouTubeSourceCandidates({
+  query,
+  householdId,
+  childProfileId,
+  policy,
+}) {
+  const youtubeCandidates = [];
+  const sourceRejectedCandidates = [];
+  const persistedCandidates = [];
+  let nextPageToken = null;
+  let pagesFetched = 0;
+  let previewResults = [];
+
+  do {
+    const remaining =
+      config.youtubeMaxCandidatesPerSearch - youtubeCandidates.length;
+    const page = await youtubeSourceService.searchCandidatePage(query, {
+      pageToken: nextPageToken,
+      maxResults: Math.min(config.youtubeMaxSearchResults, remaining),
+    });
+    const pageCandidates = (page.candidates || []).map((candidate, index) => ({
+      ...candidate,
+      sourceRank: youtubeCandidates.length + index + 1,
+    }));
+
+    youtubeCandidates.push(...pageCandidates);
+    sourceRejectedCandidates.push(
+      ...pageCandidates
+        .filter((candidate) => !candidate.embeddable)
+        .map(sourceRejectedAuditCandidate),
     );
-    const sourceRejectedCandidates = youtubeCandidates
-      .filter((candidate) => !candidate.embeddable)
-      .map(sourceRejectedAuditCandidate);
+    persistedCandidates.push(...upsertSourceCandidates(pageCandidates));
+    pagesFetched += 1;
+    nextPageToken = page.nextPageToken || null;
 
-    return {
-      sourceName: 'youtube',
-      sourceCount: youtubeCandidates.length,
-      sourceHardRejected: sourceRejectedCandidates.length,
-      sourceRejectedCandidates,
-      candidates: upsertSourceCandidates(youtubeCandidates)
-    };
-  }
-
-  const candidates = mockVideoSourceService.searchCandidates(query).map((candidate, index) => ({
-    ...candidate,
-    sourceRank: index + 1
-  }));
+    // Preview uses the same policy and decisions, but does not create review rows
+    // while deciding whether another YouTube page is needed.
+    previewResults = moderationService.moderateCandidatesWithDiagnostics({
+      householdId,
+      childProfileId,
+      candidates: persistedCandidates,
+      limit: policy.maxResults,
+      policy,
+      persist: false,
+    }).results;
+  } while (
+    previewResults.length < policy.maxResults &&
+    nextPageToken &&
+    youtubeCandidates.length < config.youtubeMaxCandidatesPerSearch
+  );
 
   return {
-    sourceName: 'mock',
+    sourceName: "youtube",
+    sourceCount: youtubeCandidates.length,
+    sourceHardRejected: sourceRejectedCandidates.length,
+    sourceRejectedCandidates,
+    candidates: persistedCandidates,
+    pagesFetched,
+  };
+}
+
+async function getSourceCandidates({
+  query,
+  householdId,
+  childProfileId,
+  policy,
+}) {
+  if (config.videoSource === "youtube") {
+    return getYouTubeSourceCandidates({
+      query,
+      householdId,
+      childProfileId,
+      policy,
+    });
+  }
+
+  const candidates = mockVideoSourceService
+    .searchCandidates(query)
+    .map((candidate, index) => ({
+      ...candidate,
+      sourceRank: index + 1,
+    }));
+
+  return {
+    sourceName: "mock",
     sourceCount: candidates.length,
     sourceHardRejected: 0,
     sourceRejectedCandidates: [],
-    candidates
+    candidates,
+    pagesFetched: 1,
   };
 }
 
@@ -257,22 +322,24 @@ function writeSearchAudit({
   query,
   sourceResponse,
   moderation,
-  results
+  results,
 }) {
   const diagnostics = moderation.diagnostics;
   const shownVideoIds = results.map((result) => result.videoId);
   const auditCandidates = [
     ...(sourceResponse.sourceRejectedCandidates || []),
-    ...(moderation.auditCandidates || [])
+    ...(moderation.auditCandidates || []),
   ];
-  const hardBlockedCount = sourceResponse.sourceHardRejected + diagnostics.hardRejected;
+  const hardBlockedCount =
+    sourceResponse.sourceHardRejected + diagnostics.hardRejected;
   const auditSummary = {
     sourceMode: sourceResponse.sourceName,
     sourceCandidates: sourceResponse.sourceCount,
     persistedCandidates: sourceResponse.candidates.length,
     sourceHardRejected: sourceResponse.sourceHardRejected,
     moderationHardRejected: diagnostics.hardRejected,
-    allowLimitedPolicy: moderation.allowLimitedPolicy || null
+    allowLimitedPolicy: moderation.allowLimitedPolicy || null,
+    sourcePagesFetched: sourceResponse.pagesFetched || 1,
   };
 
   const insertSearchEvent = db.prepare(
@@ -298,7 +365,7 @@ function writeSearchAudit({
       shown_to_child_count,
       audit_summary_json
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
   const insertCandidate = db.prepare(
     `INSERT INTO search_event_candidates (
@@ -324,7 +391,7 @@ function writeSearchAudit({
       review_queue_state,
       review_queue_reason_code
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
   const attachReviewItem = db.prepare(
     `UPDATE household_review_items
@@ -333,7 +400,7 @@ function writeSearchAudit({
       updated_at = CURRENT_TIMESTAMP
      WHERE household_id = ?
       AND video_id = ?
-      AND status = 'pending'`
+      AND status = 'pending'`,
   );
 
   return db.transaction(() => {
@@ -357,7 +424,7 @@ function writeSearchAudit({
       diagnostics.unknown,
       diagnostics.blocked,
       results.length,
-      JSON.stringify(auditSummary)
+      JSON.stringify(auditSummary),
     );
 
     auditCandidates.forEach((candidate) => {
@@ -368,7 +435,7 @@ function writeSearchAudit({
         candidate.videoId || null,
         candidate.channelId || null,
         candidate.sourceRank || null,
-        candidate.title || 'Untitled video',
+        candidate.title || "Untitled video",
         candidate.channelTitle || null,
         candidate.finalDecision,
         candidate.shownToChild ? 1 : 0,
@@ -382,15 +449,19 @@ function writeSearchAudit({
         candidate.parentDecisionSource || null,
         candidate.parentDecisionAffected ? 1 : 0,
         candidate.reviewQueueState || null,
-        candidate.reviewQueueReasonCode || null
+        candidate.reviewQueueReasonCode || null,
       );
 
       if (
         candidate.videoId &&
-        (candidate.reviewQueueState === 'created_pending' ||
-          candidate.reviewQueueState === 'matched_pending')
+        (candidate.reviewQueueState === "created_pending" ||
+          candidate.reviewQueueState === "matched_pending")
       ) {
-        attachReviewItem.run(searchEvent.lastInsertRowid, householdId, candidate.videoId);
+        attachReviewItem.run(
+          searchEvent.lastInsertRowid,
+          householdId,
+          candidate.videoId,
+        );
       }
     });
 
@@ -399,25 +470,30 @@ function writeSearchAudit({
 }
 
 async function search({ query, householdId, childProfileId }) {
-  const safeQuery = String(query || '').trim();
+  const safeQuery = String(query || "").trim();
 
   if (!safeQuery || !householdId) {
     return {
       query: safeQuery,
       candidatesConsidered: 0,
-      results: []
+      results: [],
     };
   }
 
-  const sourceResponse = await getSourceCandidates(safeQuery);
-  const candidates = sourceResponse.candidates;
   const policy = getChildPolicy({ householdId, childProfileId });
+  const sourceResponse = await getSourceCandidates({
+    query: safeQuery,
+    householdId,
+    childProfileId,
+    policy,
+  });
+  const candidates = sourceResponse.candidates;
   const moderation = moderationService.moderateCandidatesWithDiagnostics({
     householdId,
     childProfileId,
     candidates,
     limit: policy.maxResults,
-    policy
+    policy,
   });
   const results = moderation.results;
 
@@ -428,20 +504,22 @@ async function search({ query, householdId, childProfileId }) {
     query: safeQuery,
     sourceResponse,
     moderation,
-    results
+    results,
   });
 
-  if (!config.isProduction && sourceResponse.sourceName === 'youtube') {
-    const hardRejected = sourceResponse.sourceHardRejected + moderation.diagnostics.hardRejected;
+  if (!config.isProduction && sourceResponse.sourceName === "youtube") {
+    const hardRejected =
+      sourceResponse.sourceHardRejected + moderation.diagnostics.hardRejected;
     console.log(
       [
         `YouTube source returned ${sourceResponse.sourceCount} candidate(s).`,
+        `Pages fetched: ${sourceResponse.pagesFetched}.`,
         `Hard rejected: ${hardRejected}.`,
         `Auto-allowed: ${moderation.diagnostics.autoAllowed}.`,
         `Sent to review: ${moderation.diagnostics.sentToReview}.`,
         `Blocked/unknown: ${moderation.diagnostics.blockedOrUnknown}.`,
-        `Shown to child: ${results.length}.`
-      ].join(' ')
+        `Shown to child: ${results.length}.`,
+      ].join(" "),
     );
   }
 
@@ -449,7 +527,7 @@ async function search({ query, householdId, childProfileId }) {
     query: safeQuery,
     searchEventId: searchEvent.lastInsertRowid,
     candidatesConsidered: candidates.length,
-    results
+    results,
   };
 }
 
@@ -458,7 +536,7 @@ function markNotWhatIMeant({ searchEventId, householdId }) {
     .prepare(
       `UPDATE search_events
        SET not_what_i_meant = 1
-       WHERE id = ? AND household_id = ?`
+       WHERE id = ? AND household_id = ?`,
     )
     .run(searchEventId, householdId).changes;
 }
@@ -468,7 +546,7 @@ function recordClickedVideo({ searchEventId, householdId, videoId }) {
     .prepare(
       `UPDATE search_events
        SET clicked_video_id = ?
-       WHERE id = ? AND household_id = ?`
+       WHERE id = ? AND household_id = ?`,
     )
     .run(videoId, searchEventId, householdId).changes;
 }
@@ -476,5 +554,5 @@ function recordClickedVideo({ searchEventId, householdId, videoId }) {
 module.exports = {
   markNotWhatIMeant,
   recordClickedVideo,
-  search
+  search,
 };

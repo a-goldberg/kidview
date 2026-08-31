@@ -51,6 +51,7 @@ const db = require("../app/db/database");
 const config = require("../app/config");
 const decisionService = require("../app/services/decisionService");
 const childProfileSessionService = require("../app/services/childProfileSessionService");
+const categoryClassificationService = require("../app/services/categoryClassificationService");
 const policyService = require("../app/services/policyService");
 const searchService = require("../app/services/searchService");
 const youtubeSourceService = require("../app/services/youtubeSourceService");
@@ -159,6 +160,9 @@ function insertVideo({
   liveStatus = "none",
   isShort = 0,
   viewCount = 500000,
+  youtubeCategoryId = null,
+  youtubeCategoryTitle = null,
+  madeForKids = 0,
 }) {
   // Reuse an existing source-cache channel when possible so household channel
   // decisions apply exactly as they would in normal searches.
@@ -191,9 +195,12 @@ function insertVideo({
         is_livestream,
         live_status,
         published_at,
-        view_count
+        view_count,
+        youtube_category_id,
+        youtube_category_title,
+        made_for_kids
       )
-      VALUES (?, 'mock', ?, ?, ?, ?, 'Science', 'science', '["learning"]', ?, ?, ?, ?, ?, ?, '2026-01-01T00:00:00Z', ?)
+      VALUES (?, 'mock', ?, ?, ?, ?, 'Science', 'science', '["learning"]', ?, ?, ?, ?, ?, ?, '2026-01-01T00:00:00Z', ?, ?, ?, ?)
       RETURNING id`,
     )
     .get(
@@ -209,6 +216,9 @@ function insertVideo({
       liveStatus === "none" ? 0 : 1,
       liveStatus,
       viewCount,
+      youtubeCategoryId,
+      youtubeCategoryTitle,
+      madeForKids,
     );
 }
 
@@ -846,10 +856,11 @@ test("zero-result searches appear in the search audit", async () => {
 
 test("non-embeddable source candidates are audited but not persisted normally", async () => {
   const originalSource = config.videoSource;
-  const originalSearchCandidates = youtubeSourceService.searchCandidates;
+  const originalSearchCandidatePage = youtubeSourceService.searchCandidatePage;
 
   config.videoSource = "youtube";
-  youtubeSourceService.searchCandidates = async () => [
+  youtubeSourceService.searchCandidatePage = async () => ({
+    candidates: [
     {
       source: "youtube",
       externalVideoId: "nonembed-regression",
@@ -865,13 +876,15 @@ test("non-embeddable source candidates are audited but not persisted normally", 
       embeddable: false,
       viewCount: 100000,
     },
-  ];
+    ],
+    nextPageToken: null,
+  });
 
   try {
     await withMutedConsoleAsync(() => childSearch("nonembed regression"));
   } finally {
     config.videoSource = originalSource;
-    youtubeSourceService.searchCandidates = originalSearchCandidates;
+    youtubeSourceService.searchCandidatePage = originalSearchCandidatePage;
   }
 
   const event = latestSearchEvent("nonembed regression");
@@ -884,4 +897,249 @@ test("non-embeddable source candidates are audited but not persisted normally", 
   assert.equal(candidate.moderation_source, "source_filter");
   assert.equal(candidate.review_queue_reason_code, "source_filter:not_embeddable");
   assert.equal(persistedVideo, undefined);
+});
+
+test("YouTube category and made-for-kids metadata can lift a neutral result to allow", async () => {
+  const originalSource = config.videoSource;
+  const originalSearchCandidatePage = youtubeSourceService.searchCandidatePage;
+
+  config.videoSource = "youtube";
+  youtubeSourceService.searchCandidatePage = async () => ({
+    candidates: [
+    {
+      source: "youtube",
+      externalVideoId: "youtube-category-signal-regression",
+      title: "Quiet Pony in a Field",
+      description: "A calm look at a pony walking through a field.",
+      channelExternalId: "UC_CATEGORY_SIGNAL_REGRESSION",
+      channelTitle: "Field Camera",
+      youtubeCategoryId: "15",
+      youtubeCategoryTitle: "Pets & Animals",
+      madeForKids: true,
+      durationSeconds: 300,
+      publishedAt: "2026-01-01T00:00:00Z",
+      isShort: false,
+      isLivestream: false,
+      liveStatus: "none",
+      embeddable: true,
+      viewCount: 1000000,
+    },
+    ],
+    nextPageToken: null,
+  });
+
+  try {
+    const response = await withMutedConsoleAsync(() =>
+      childSearch("pony category test"),
+    );
+
+    assert.equal(response.results.length, 1);
+    assert.equal(response.results[0].decision, "allow");
+  } finally {
+    config.videoSource = originalSource;
+    youtubeSourceService.searchCandidatePage = originalSearchCandidatePage;
+  }
+
+  const event = latestSearchEvent("pony category test");
+  const candidate = auditCandidate(event.id, "Quiet Pony");
+  const persistedVideo = videoByExternalId("youtube-category-signal-regression");
+
+  assert.equal(persistedVideo.youtube_category_id, "15");
+  assert.equal(persistedVideo.youtube_category_title, "Pets & Animals");
+  assert.equal(persistedVideo.primary_category, "Pets & Animals");
+  assert.equal(persistedVideo.icon_key, "animals");
+  assert.equal(persistedVideo.made_for_kids, 1);
+  assert.match(candidate.quality_tags_json, /youtube-pets-and-animals/);
+  assert.match(candidate.quality_tags_json, /youtube-made-for-kids/);
+});
+
+test("YouTube category and made-for-kids metadata cannot override severe risk", async () => {
+  const originalSource = config.videoSource;
+  const originalSearchCandidatePage = youtubeSourceService.searchCandidatePage;
+
+  config.videoSource = "youtube";
+  youtubeSourceService.searchCandidatePage = async () => ({
+    candidates: [
+    {
+      source: "youtube",
+      externalVideoId: "youtube-category-risk-regression",
+      title: "Pony Weapon Demonstration",
+      description: "A pony in a field.",
+      channelExternalId: "UC_CATEGORY_RISK_REGRESSION",
+      channelTitle: "Field Camera",
+      youtubeCategoryId: "15",
+      youtubeCategoryTitle: "Pets & Animals",
+      madeForKids: true,
+      durationSeconds: 300,
+      publishedAt: "2026-01-01T00:00:00Z",
+      isShort: false,
+      isLivestream: false,
+      liveStatus: "none",
+      embeddable: true,
+      viewCount: 1000000,
+    },
+    ],
+    nextPageToken: null,
+  });
+
+  try {
+    const response = await withMutedConsoleAsync(() =>
+      childSearch("pony risk category test"),
+    );
+
+    assert.equal(response.results.length, 0);
+  } finally {
+    config.videoSource = originalSource;
+    youtubeSourceService.searchCandidatePage = originalSearchCandidatePage;
+  }
+
+  const event = latestSearchEvent("pony risk category test");
+  const candidate = auditCandidate(event.id, "Pony Weapon");
+
+  assert.equal(candidate.final_decision, "block");
+  assert.match(candidate.risk_tags_json, /severe-risk-flag/);
+  assert.match(candidate.quality_tags_json, /youtube-pets-and-animals/);
+  assert.match(candidate.quality_tags_json, /youtube-made-for-kids/);
+});
+
+test("child-facing categories use YouTube metadata instead of title matching", () => {
+  const assignedCategory = categoryClassificationService.classifyCandidateCategory({
+    title: "Science facts about otters",
+    youtubeCategoryTitle: "Pets & Animals",
+  });
+  const unhelpfulCategory = categoryClassificationService.classifyCandidateCategory({
+    title: "Science facts about otters",
+    youtubeCategoryTitle: "Music",
+  });
+
+  assert.deepEqual(assignedCategory, {
+    primaryCategory: "Pets & Animals",
+    iconKey: "animals",
+    source: "youtube_category",
+  });
+  assert.deepEqual(unhelpfulCategory, {
+    primaryCategory: "General",
+    iconKey: "general",
+    source: "general_fallback",
+  });
+});
+
+function youtubeBackfillCandidate(externalVideoId, overrides = {}) {
+  return {
+    source: "youtube",
+    externalVideoId,
+    title: "Quiet Field Camera",
+    description: "A calm look at a field.",
+    channelExternalId: `UC_${externalVideoId}`,
+    channelTitle: "Field Camera",
+    durationSeconds: 300,
+    publishedAt: "2026-01-01T00:00:00Z",
+    isShort: false,
+    isLivestream: false,
+    liveStatus: "none",
+    embeddable: true,
+    viewCount: 1000000,
+    ...overrides,
+  };
+}
+
+test("YouTube backfill fetches no more than 40 candidates when result slots remain empty", async () => {
+  const originalSource = config.videoSource;
+  const originalPageSize = config.youtubeMaxSearchResults;
+  const originalCandidateLimit = config.youtubeMaxCandidatesPerSearch;
+  const originalSearchCandidatePage = youtubeSourceService.searchCandidatePage;
+  const pageTokens = [];
+
+  config.videoSource = "youtube";
+  config.youtubeMaxSearchResults = 10;
+  config.youtubeMaxCandidatesPerSearch = 40;
+  youtubeSourceService.searchCandidatePage = async (_query, { pageToken }) => {
+    pageTokens.push(pageToken || "first");
+    const pageNumber = pageTokens.length;
+
+    return {
+      candidates: Array.from({ length: 10 }, (_, index) =>
+        youtubeBackfillCandidate(`backfill-blocked-${pageNumber}-${index}`, {
+          title: `Weapon Backfill Candidate ${pageNumber}-${index}`,
+        }),
+      ),
+      nextPageToken: `page-${pageNumber + 1}`,
+    };
+  };
+
+  try {
+    const response = await withMutedConsoleAsync(() =>
+      childSearch("bounded backfill test"),
+    );
+
+    assert.equal(response.results.length, 0);
+  } finally {
+    config.videoSource = originalSource;
+    config.youtubeMaxSearchResults = originalPageSize;
+    config.youtubeMaxCandidatesPerSearch = originalCandidateLimit;
+    youtubeSourceService.searchCandidatePage = originalSearchCandidatePage;
+  }
+
+  const event = latestSearchEvent("bounded backfill test");
+  const summary = JSON.parse(event.audit_summary_json);
+
+  assert.equal(pageTokens.length, 4);
+  assert.equal(event.source_candidate_count, 40);
+  assert.equal(summary.sourcePagesFetched, 4);
+});
+
+test("YouTube backfill stops after the active result cap is filled", async () => {
+  const originalSource = config.videoSource;
+  const originalPageSize = config.youtubeMaxSearchResults;
+  const originalCandidateLimit = config.youtubeMaxCandidatesPerSearch;
+  const originalSearchCandidatePage = youtubeSourceService.searchCandidatePage;
+  let callCount = 0;
+
+  config.videoSource = "youtube";
+  config.youtubeMaxSearchResults = 10;
+  config.youtubeMaxCandidatesPerSearch = 40;
+  youtubeSourceService.searchCandidatePage = async () => {
+    callCount += 1;
+
+    return {
+      candidates: [
+        youtubeBackfillCandidate("backfill-allow-1", {
+          youtubeCategoryId: "15",
+          youtubeCategoryTitle: "Pets & Animals",
+          madeForKids: true,
+        }),
+        youtubeBackfillCandidate("backfill-allow-2", {
+          youtubeCategoryId: "15",
+          youtubeCategoryTitle: "Pets & Animals",
+          madeForKids: true,
+        }),
+        youtubeBackfillCandidate("backfill-allow-3", {
+          youtubeCategoryId: "15",
+          youtubeCategoryTitle: "Pets & Animals",
+          madeForKids: true,
+        }),
+      ],
+      nextPageToken: "should-not-be-requested",
+    };
+  };
+
+  try {
+    const response = await withMutedConsoleAsync(() =>
+      childSearch("backfill stops at cap"),
+    );
+
+    assert.equal(response.results.length, 3);
+  } finally {
+    config.videoSource = originalSource;
+    config.youtubeMaxSearchResults = originalPageSize;
+    config.youtubeMaxCandidatesPerSearch = originalCandidateLimit;
+    youtubeSourceService.searchCandidatePage = originalSearchCandidatePage;
+  }
+
+  const event = latestSearchEvent("backfill stops at cap");
+  const summary = JSON.parse(event.audit_summary_json);
+
+  assert.equal(callCount, 1);
+  assert.equal(event.source_candidate_count, 3);
+  assert.equal(summary.sourcePagesFetched, 1);
 });

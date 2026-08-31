@@ -1,6 +1,7 @@
 const bcrypt = require('bcrypt');
 const db = require('../app/db/database');
 const config = require('../app/config');
+const { classifyCandidateCategory } = require('../app/services/categoryClassificationService');
 const youtubeSampleCandidates = require('../app/services/fixtures/youtubeSampleCandidates');
 
 const existingHousehold = db.prepare('SELECT id FROM households LIMIT 1').get();
@@ -9,24 +10,6 @@ if (existingHousehold) {
   console.log('Seed data already exists.');
   process.exit(0);
 }
-
-const CATEGORY_RULES = [
-  {
-    pattern: /nature|blue|otter|cat|rainforest|sea|animal|parkour/i,
-    primaryCategory: 'Animals',
-    iconKey: 'animals'
-  },
-  {
-    pattern: /pixar|animation|animated|slime|toy|craft|treehouse|bouncing ball/i,
-    primaryCategory: 'Art',
-    iconKey: 'art'
-  },
-  {
-    pattern: /fraction|math|science|water|physics|history|weapon/i,
-    primaryCategory: 'Science',
-    iconKey: 'science'
-  }
-];
 
 const CHANNEL_DECISIONS = {
   UCpVm7bg6pXKo1Pr6k5kx7vA: {
@@ -86,8 +69,7 @@ const REVIEW_STATUSES = {
 };
 
 function classifyCandidate(candidate) {
-  const haystack = `${candidate.title} ${candidate.description} ${candidate.channelTitle}`;
-  const matchedRule = CATEGORY_RULES.find((rule) => rule.pattern.test(haystack));
+  const text = `${candidate.title} ${candidate.description} ${candidate.channelTitle}`;
   const labels = [];
   const liveStatus = candidate.liveStatus || (candidate.isLivestream ? 'completed_live' : 'none');
 
@@ -96,13 +78,12 @@ function classifyCandidate(candidate) {
   if (liveStatus === 'upcoming') labels.push('upcoming-live');
   if (liveStatus === 'completed_live') labels.push('completed-live');
   if (!candidate.embeddable) labels.push('not-embeddable');
-  if (/toy|slime|surprise|mystery|clickbait|won't believe/i.test(haystack)) labels.push('high-stimulation');
-  if (/math|fraction|science|nature|history|animation/i.test(haystack)) labels.push('learning');
-  if (/dangerous|stunt|weapon|flamethrower|poison|toxin/i.test(haystack)) labels.push('needs-care');
+  if (/toy|slime|surprise|mystery|clickbait|won't believe/i.test(text)) labels.push('high-stimulation');
+  if (/math|fraction|science|nature|history|animation/i.test(text)) labels.push('learning');
+  if (/dangerous|stunt|weapon|flamethrower|poison|toxin/i.test(text)) labels.push('needs-care');
 
   return {
-    primaryCategory: matchedRule ? matchedRule.primaryCategory : 'General',
-    iconKey: matchedRule ? matchedRule.iconKey : 'general',
+    ...classifyCandidateCategory(candidate),
     labels
   };
 }
@@ -189,9 +170,12 @@ db.transaction(() => {
       is_livestream,
       live_status,
       published_at,
-      view_count
+      view_count,
+      youtube_category_id,
+      youtube_category_title,
+      made_for_kids
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     RETURNING id`
   );
 
@@ -226,7 +210,10 @@ db.transaction(() => {
       liveStatus === 'none' ? 0 : 1,
       liveStatus,
       candidate.publishedAt || null,
-      Number(candidate.viewCount || 0)
+      Number(candidate.viewCount || 0),
+      candidate.youtubeCategoryId || null,
+      candidate.youtubeCategoryTitle || null,
+      candidate.madeForKids ? 1 : 0
     ).id;
 
     channelIdsByExternalId.set(candidate.channelExternalId, channelId);

@@ -186,6 +186,16 @@ These labels are stored on `videos.labels_json` and can appear in child-safe car
 | `reasonable-duration` | Duration is between 2 and 15 minutes. |
 | `established-view-history` | View count is at least 100,000. |
 | `healthy-views-per-day` | Estimated views per day is at least 500. |
+| `youtube-pets-and-animals` | YouTube classified the video as Pets & Animals. |
+| `youtube-education` | YouTube classified the video as Education. |
+| `youtube-howto-and-style` | YouTube classified the video as Howto & Style. |
+| `youtube-science-and-technology` | YouTube classified the video as Science & Technology. |
+| `youtube-autos-and-vehicles` | YouTube classified the video as Autos & Vehicles. |
+| `youtube-sports` | YouTube classified the video as Sports. |
+| `youtube-travel` | YouTube classified the video as Travel & Events. |
+| `youtube-documentary` | YouTube classified the video as Documentary. |
+| `youtube-family` | YouTube classified the video as Family. |
+| `youtube-made-for-kids` | YouTube marked the video as made for kids. |
 | `parent-video-decision` | A durable household video decision controlled the result. |
 
 ## Moderation Risk Tags

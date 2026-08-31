@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="Autos and vehicles">
+  <rect width="96" height="96" rx="16" fill="#586f96"/>
+  <path d="M24 58l7-19h34l7 19v12H24z" fill="#ffffff"/>
+  <path d="M35 39l5-10h16l5 10" fill="#ffffff"/>
+  <circle cx="35" cy="70" r="7" fill="#586f96"/>
+  <circle cx="61" cy="70" r="7" fill="#586f96"/>
+</svg>

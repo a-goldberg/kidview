@@ -1,6 +1,7 @@
 const config = require('../config');
 
 const YOUTUBE_API_BASE = 'https://www.googleapis.com/youtube/v3';
+let categoryTitlesPromise = null;
 
 function parseYouTubeDuration(duration) {
   const match = String(duration || '').match(
@@ -87,7 +88,7 @@ function liveStatusFor(video) {
   return 'none';
 }
 
-function mapYouTubeVideo(video) {
+function mapYouTubeVideo(video, categoryTitles) {
   const durationSeconds = parseYouTubeDuration(video.contentDetails && video.contentDetails.duration);
   const liveStatus = liveStatusFor(video);
   const statistics = video.statistics || {};
@@ -99,12 +100,15 @@ function mapYouTubeVideo(video) {
     description: video.snippet.description || '',
     channelExternalId: video.snippet.channelId,
     channelTitle: video.snippet.channelTitle,
+    youtubeCategoryId: video.snippet.categoryId || null,
+    youtubeCategoryTitle: categoryTitles.get(video.snippet.categoryId) || null,
     durationSeconds,
     publishedAt: video.snippet.publishedAt,
     isShort: durationSeconds <= 60,
     isLivestream: liveStatus !== 'none',
     liveStatus,
     embeddable: video.status && video.status.embeddable === true,
+    madeForKids: video.status && video.status.madeForKids === true,
     transcriptAvailable: false,
     transcriptSample: null,
     primaryCategoryHint: null,
@@ -114,14 +118,38 @@ function mapYouTubeVideo(video) {
   };
 }
 
-async function searchCandidates(query) {
+function getCategoryTitles() {
+  if (!categoryTitlesPromise) {
+    categoryTitlesPromise = fetchYouTubeJson('videoCategories', {
+      part: 'snippet',
+      regionCode: config.youtubeRegionCode,
+    })
+      .then((response) =>
+        new Map(
+          (response.items || [])
+            .filter((category) => category.id && category.snippet && category.snippet.title)
+            .map((category) => [category.id, category.snippet.title]),
+        ),
+      )
+      .catch((error) => {
+        categoryTitlesPromise = null;
+        console.warn(`YouTube category lookup failed: ${error.message}`);
+        return new Map();
+      });
+  }
+
+  return categoryTitlesPromise;
+}
+
+async function searchCandidatePage(query, { pageToken = null, maxResults } = {}) {
   requireApiKey();
 
   const searchResponse = await fetchYouTubeJson('search', {
     part: 'snippet',
     type: 'video',
     q: query,
-    maxResults: config.youtubeMaxSearchResults,
+    maxResults: maxResults || config.youtubeMaxSearchResults,
+    pageToken,
     safeSearch: config.youtubeSafeSearch,
     videoEmbeddable: 'true',
     regionCode: config.youtubeRegionCode,
@@ -133,21 +161,39 @@ async function searchCandidates(query) {
     .filter(Boolean);
 
   if (!videoIds.length) {
-    return [];
+    return {
+      candidates: [],
+      nextPageToken: searchResponse.nextPageToken || null,
+    };
   }
 
   const videosResponse = await fetchYouTubeJson('videos', {
     part: 'snippet,contentDetails,status,liveStreamingDetails,statistics',
     id: videoIds.join(',')
   });
+  const categoryTitles = await getCategoryTitles();
 
-  return (videosResponse.items || [])
+  const videosById = new Map(
+    (videosResponse.items || [])
     .filter((video) => video.id && video.snippet && video.contentDetails && video.status)
-    .map(mapYouTubeVideo);
+    .map((video) => [video.id, mapYouTubeVideo(video, categoryTitles)])
+  );
+
+  return {
+    candidates: videoIds.map((videoId) => videosById.get(videoId)).filter(Boolean),
+    nextPageToken: searchResponse.nextPageToken || null,
+  };
+}
+
+async function searchCandidates(query) {
+  const page = await searchCandidatePage(query);
+  return page.candidates;
 }
 
 module.exports = {
   liveStatusFor,
   parseYouTubeDuration,
+  getCategoryTitles,
+  searchCandidatePage,
   searchCandidates
 };
