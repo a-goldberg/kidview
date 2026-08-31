@@ -10,7 +10,7 @@
 
   <%- include('dashboard-nav', { activeSection: 'overview' }) %>
 
-  <section class="dashboard-grid dashboard-3-col parent-overview-grid" aria-label="Dashboard summary">
+  <section class="dashboard-grid dashboard-2-col parent-overview-grid" aria-label="Dashboard summary">
     <article class="panel dashboard-summary-card">
       <p class="category">Needs attention</p>
       <h2><%= dashboard.pendingReviewCount %> pending video<%= dashboard.pendingReviewCount === 1 ? '' : 's' %></h2>
@@ -25,58 +25,54 @@
       <a class="secondary-button small-button" href="/parent/searches">Open search audit</a>
     </article>
 
-    <article class="panel dashboard-summary-card">
-      <p class="category">Household decisions</p>
-      <h2>Decision history</h2>
-      <p class="muted">Find and adjust past video or channel choices.</p>
-      <a class="secondary-button small-button" href="/parent/decisions">Open decisions</a>
-    </article>
   </section>
 
   <section class="dashboard-workspace-grid" aria-label="Parent dashboard details">
-    <article class="panel" id="moderation-policy">
-      <div class="section-heading-row">
-        <div>
-          <p class="eyebrow">Household Policy</p>
-        </div>
-      </div>
-      <ul class="simple-list policy-list">
-        <li>
-          <strong>Results cap</strong>
-          
-          <span>Child search shows at most three videos.</span>
-        </li>
-        <li>
-          <strong>Child-visible decisions</strong>
-          <span>Allow is child-visible by default. Limited results follow the active child profile policy.</span>
-        </li>
-        <li>
-          <strong>Hard blocks</strong>
-          <span>Shorts, live/upcoming streams, and non-embeddable videos stay out. Blocked channels stay out unless a parent allows one exact video.</span>
-        </li>
-      </ul>
-    </article>
-    
-    <article class="panel" id="child-profiles">
+    <article class="panel child-profile-selector" id="child-profiles">
       <div class="section-heading-row">
         <div>
           <p class="eyebrow">Child profiles</p>
-          <h2>Profiles stay household-scoped</h2>
+          <h2>Select the active child profile for this device.</h2>
         </div>
         <span class="count-pill"><%= dashboard.children.length %></span>
       </div>
-      <p class="muted">Child profiles are not login accounts. Their result policy, limited-access behavior, and daily limits can be managed together.</p>
+      <p class="muted">Choosing a profile starts child mode on this device and signs out of parent controls.</p>
       <% if (dashboard.children.length) { %>
-        <ul class="simple-list">
+        <ul class="profile-selector-list">
           <% dashboard.children.forEach((child) => { %>
-            <li>
-              <strong><%= child.display_name %></strong>
-              <span>Profile only, not a login account</span>
-              <span>Limited policy: <%= displayLabel('allowLimitedPolicy', child.allow_limited_policy || 'block', displayLocale) %>, threshold <%= Math.round(Number(child.allow_limited_min_confidence || 0.7) * 100) %>%</span>
+            <% const isActive = activeChildProfile && activeChildProfile.id === child.id; %>
+            <li class="profile-selector-card<%= isActive ? ' is-active' : '' %>">
+              <div class="profile-selector-heading">
+                <div>
+                  <h3><%= child.display_name %></h3>
+                  <p class="muted"><%= child.policy_profile_name || 'Default result policy' %></p>
+                </div>
+                <% if (isActive) { %><span class="active-profile-badge">Active on this device</span><% } %>
+              </div>
+              <dl class="profile-summary-list">
+                <div>
+                  <dt>Limited-access policy</dt>
+                  <dd><%= displayLabel('allowLimitedPolicy', child.allow_limited_policy || 'block', displayLocale) %></dd>
+                </div>
+                <div>
+                  <dt>Daily search limit</dt>
+                  <dd><%= child.daily_search_limit === null ? 'No limit' : `${child.daily_search_limit} searches` %></dd>
+                </div>
+                <div>
+                  <dt>Daily watch limit</dt>
+                  <dd><%= child.daily_video_watch_limit === null ? 'No limit' : `${child.daily_video_watch_limit} videos` %></dd>
+                </div>
+              </dl>
+              <form action="/child/profile/<%= child.id %>/activate" method="post">
+                <button class="secondary-button small-button" type="submit"><%= isActive ? 'Use this profile again' : `Use KidView as ${child.display_name}` %></button>
+              </form>
             </li>
           <% }) %>
         </ul>
+      <% } else { %>
+        <p class="muted">No child profiles yet. Create one before setting up this device.</p>
       <% } %>
+      <a class="primary-button small-button" href="/parent/profiles">Manage child profiles</a>
     </article>
 
     <article class="panel">

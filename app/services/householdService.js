@@ -12,7 +12,17 @@ function parseLabels(labelsJson) {
 function getParentDashboard(householdId) {
   const household = db.prepare('SELECT * FROM households WHERE id = ?').get(householdId);
   const children = db
-    .prepare('SELECT * FROM child_profiles WHERE household_id = ? ORDER BY display_name')
+    .prepare(
+      `SELECT
+        child_profiles.*,
+        policy_profiles.name AS policy_profile_name
+       FROM child_profiles
+       LEFT JOIN policy_profiles
+        ON policy_profiles.id = child_profiles.policy_profile_id
+        AND policy_profiles.household_id = child_profiles.household_id
+       WHERE child_profiles.household_id = ?
+       ORDER BY child_profiles.display_name, child_profiles.id`
+    )
     .all(householdId);
   const recentSearches = db
     .prepare(
