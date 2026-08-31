@@ -10,7 +10,13 @@
     <%- include('profile-context', { childProfile }) %>
   </section>
 
-  <% if (!query) { %>
+  <% if (typeof sourceError !== 'undefined' && sourceError) { %>
+    <section class="panel" role="alert">
+      <h2>Search is temporarily unavailable</h2>
+      <p class="muted"><%= sourceError %></p>
+      <a class="secondary-button" href="/child/search?q=<%= encodeURIComponent(query) %>">Try again</a>
+    </section>
+  <% } else if (!query) { %>
     <section class="panel">
       <p>Start with a search term.</p>
       <a class="secondary-button" href="/child/search">Go to search</a>

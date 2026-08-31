@@ -3,6 +3,16 @@ const config = require('../config');
 const YOUTUBE_API_BASE = 'https://www.googleapis.com/youtube/v3';
 let categoryTitlesPromise = null;
 
+class YouTubeDataApiError extends Error {
+  constructor({ endpoint, message }) {
+    super(`YouTube Data API request failed: ${message}${youtubeErrorHint(message)}`);
+    this.name = 'YouTubeDataApiError';
+    this.code = 'youtube_data_api_error';
+    this.endpoint = endpoint;
+    this.userMessage = youtubeUserMessage(endpoint, message);
+  }
+}
+
 function parseYouTubeDuration(duration) {
   const match = String(duration || '').match(
     /^P(?:(\d+)Y)?(?:(\d+)M)?(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/
@@ -41,6 +51,17 @@ function youtubeErrorHint(message) {
   return '';
 }
 
+function youtubeUserMessage(endpoint, message) {
+  if (
+    endpoint === 'search' &&
+    /quota exceeded.*search queries|search queries.*quota exceeded/i.test(message)
+  ) {
+    return 'YouTube has reached its search limit for today. Please try again tomorrow.';
+  }
+
+  return 'KidView cannot search YouTube right now. Please try again in a few minutes.';
+}
+
 async function fetchYouTubeJson(path, params) {
   const url = new URL(`${YOUTUBE_API_BASE}/${path}`);
 
@@ -57,14 +78,19 @@ async function fetchYouTubeJson(path, params) {
   try {
     response = await fetch(url);
   } catch (error) {
-    throw new Error(`YouTube Data API request could not be reached: ${error.message}`);
+    const sourceError = new YouTubeDataApiError({
+      endpoint: path,
+      message: `The service could not be reached: ${error.message}`
+    });
+    sourceError.message = `YouTube Data API request could not be reached: ${error.message}`;
+    throw sourceError;
   }
 
   const body = await response.json().catch(() => ({}));
 
   if (!response.ok) {
     const message = body.error && body.error.message ? body.error.message : response.statusText;
-    throw new Error(`YouTube Data API request failed: ${message}${youtubeErrorHint(message)}`);
+    throw new YouTubeDataApiError({ endpoint: path, message });
   }
 
   return body;
@@ -191,6 +217,7 @@ async function searchCandidates(query) {
 }
 
 module.exports = {
+  YouTubeDataApiError,
   liveStatusFor,
   parseYouTubeDuration,
   getCategoryTitles,
