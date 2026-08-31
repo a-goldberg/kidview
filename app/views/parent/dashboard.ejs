@@ -13,16 +13,32 @@
   <section class="dashboard-grid dashboard-2-col parent-overview-grid" aria-label="Dashboard summary">
     <article class="panel dashboard-summary-card">
       <p class="category">Needs attention</p>
-      <h2><%= dashboard.pendingReviewCount %> pending video<%= dashboard.pendingReviewCount === 1 ? '' : 's' %></h2>
+      <h2 class="<%= dashboard.pendingReviewCount > 0 ? 'accent' : '' %>"><%= dashboard.pendingReviewCount %> pending video<%= dashboard.pendingReviewCount === 1 ? '' : 's' %></h2>
       <p class="muted">Review parent-actionable videos before they can appear for children.</p>
-      <a class="secondary-button small-button" href="/parent/reviews">Open review queue</a>
+      <% if (dashboard.pendingReviewCount > 0 ) { %>
+        <a class="secondary-button small-button" href="/parent/reviews">Open review queue</a>
+      <% } %>
     </article>
 
-    <article class="panel dashboard-summary-card">
-      <p class="category">Audit trail</p>
-      <h2><%= dashboard.recentSearches.length %> recent search<%= dashboard.recentSearches.length === 1 ? '' : 'es' %></h2>
-      <p class="muted">See what was shown, hidden, blocked, or sent to review.</p>
-      <a class="secondary-button small-button" href="/parent/searches">Open search audit</a>
+    <article class="panel">
+      <div class="section-heading-row">
+        <div>
+          <p class="eyebrow">Recent searches</p>
+        </div>
+        <a class="secondary-button small-button" href="/parent/searches">View all</a>
+      </div>
+      <% if (dashboard.recentSearches.length) { %>
+        <ul class="simple-list" id="parent-recent-searches">
+          <% dashboard.recentSearches.forEach((event) => { %>
+            <li>
+              <strong><%= event.query %></strong>
+              <span><%= event.result_count %> result(s)</span>
+            </li>
+          <% }) %>
+        </ul>
+      <% } else { %>
+        <p class="muted">No searches have been logged yet.</p>
+      <% } %>
     </article>
 
   </section>
@@ -64,7 +80,7 @@
                 </div>
               </dl>
               <form action="/child/profile/<%= child.id %>/activate" method="post">
-                <button class="secondary-button small-button" type="submit"><%= isActive ? 'Use this profile again' : `Use KidView as ${child.display_name}` %></button>
+                <button class="secondary-button small-button" type="submit"><%= isActive ? 'Search with this profile again' : `Search as ${child.display_name}` %></button>
               </form>
             </li>
           <% }) %>
@@ -75,27 +91,7 @@
       <a class="primary-button small-button" href="/parent/profiles">Manage child profiles</a>
     </article>
 
-    <article class="panel">
-      <div class="section-heading-row">
-        <div>
-          <p class="eyebrow">Recent searches</p>
-          <h2>Latest child searches</h2>
-        </div>
-        <a class="secondary-button small-button" href="/parent/searches">View all</a>
-      </div>
-      <% if (dashboard.recentSearches.length) { %>
-        <ul class="simple-list">
-          <% dashboard.recentSearches.forEach((event) => { %>
-            <li>
-              <strong><%= event.query %></strong>
-              <span><%= event.result_count %> result(s)</span>
-            </li>
-          <% }) %>
-        </ul>
-      <% } else { %>
-        <p class="muted">No searches have been logged yet.</p>
-      <% } %>
-    </article>
+    
   </section>
 </main>
 

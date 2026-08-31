@@ -43,6 +43,10 @@ textarea {
   font: inherit;
 }
 
+.accent {
+  color: var(--accent);
+}
+
 .site-header {
   display: flex;
   align-items: center;
@@ -385,6 +389,15 @@ textarea {
 
 .parent-overview-grid {
   margin-bottom: 1rem;
+  grid-template-columns: [needsAttention] 1fr [recentSearches] 2fr;
+}
+
+#parent-recent-searches > li {
+  max-width: 70%;
+  display: inline-grid;
+  gap: 0.15rem;
+  grid-auto-flow: column;
+  grid-template-columns: repeat(2, 1fr);
 }
 
 .dashboard-summary-card {
