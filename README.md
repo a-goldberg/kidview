@@ -138,6 +138,8 @@ Child profiles are not login accounts. A parent establishes the active child pro
 
 The signed cookie contains only household and child-profile IDs plus its issue time. Every request rechecks that the child still belongs to the household, and an invalid, expired, deleted, or mismatched selection returns the browser to the profile setup flow. KidView never falls back to the first child profile in the database. Switching profiles requires parent authentication again, which keeps profile names and household controls out of the unauthenticated child experience.
 
+The parent dashboard keeps the review queue and search audit as its two summary cards. Its child-profile section shows each household profile's limited-access behavior and daily limits, highlights the valid profile currently active on the device, and reuses the same signed handoff when a parent selects a profile. Decision History and detailed policy controls remain available from the dashboard navigation and the Profiles & Policies page, respectively.
+
 ## Testing The Fixture Review Flow
 
 The seed data loads YouTube-shaped fixture candidates from `app/services/fixtures/youtubeSampleCandidates.js`. These are local test records only; while `VIDEO_SOURCE=mock`, the app does not call the YouTube API.

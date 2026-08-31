@@ -15,6 +15,7 @@ const {
   upsertVideoDecision
 } = require('../services/decisionService');
 const { displayLabel } = require('../services/displayLabels');
+const { getActiveChildProfile } = require('../services/childProfileSessionService');
 const {
   createChildProfile,
   createPolicyProfile,
@@ -110,11 +111,20 @@ function handlePolicyManagementError(req, res, next, error) {
 }
 
 router.get('/', requireParent, (req, res) => {
-  const dashboard = getParentDashboard(req.session.parentUser.householdId);
+  const householdId = req.session.parentUser.householdId;
+  const dashboard = getParentDashboard(householdId);
+  const selectedProfile = getActiveChildProfile(req);
+
+  // A stale selection from another household must never appear as this
+  // parent's active child, even though the child cookie is independently signed.
+  const activeChildProfile = selectedProfile && selectedProfile.householdId === householdId
+    ? selectedProfile
+    : null;
 
   res.render('parent/dashboard', {
     title: 'Parent Dashboard',
-    dashboard
+    dashboard,
+    activeChildProfile
   });
 });
 
