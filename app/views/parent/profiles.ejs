@@ -81,9 +81,10 @@
                 <label for="child-<%= child.id %>-watch-limit">
                   <span>Daily video watch limit</span>
                   <input id="child-<%= child.id %>-watch-limit" name="dailyVideoWatchLimit" type="number" min="1" step="1" value="<%= child.daily_video_watch_limit || '' %>" placeholder="Unlimited" inputmode="numeric">
-                  <small class="muted">Saved now; enforcement begins when KidView tracks playback.</small>
                 </label>
               </div>
+              <small class="muted">Limits saved for now; enforcement begins when KidView tracks playback.</small>
+
             </form>
             <div class="management-action-row">
               <button class="primary-button" type="submit" form="child-<%= child.id %>-form">Save child profile</button>
@@ -152,9 +153,9 @@
                 <label for="new-child-watch-limit">
                   <span>Daily video watch limit</span>
                   <input id="new-child-watch-limit" name="dailyVideoWatchLimit" type="number" min="1" step="1" placeholder="Unlimited" inputmode="numeric">
-                  <small class="muted">Saved now; enforcement begins when KidView tracks playback.</small>
                 </label>
               </div>
+              <small class="muted">Limits saved for now; enforcement begins when KidView tracks playback.</small>
               <div class="button-row">
                 <button class="primary-button" type="submit">Create child profile</button>
               </div>
