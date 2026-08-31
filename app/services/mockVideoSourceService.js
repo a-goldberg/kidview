@@ -21,6 +21,9 @@ function searchCandidates(query) {
         videos.live_status AS liveStatus,
         videos.published_at AS publishedAt,
         videos.view_count AS viewCount,
+        videos.youtube_category_id AS youtubeCategoryId,
+        videos.youtube_category_title AS youtubeCategoryTitle,
+        videos.made_for_kids AS madeForKids,
         channels.id AS channelId,
         channels.title AS channelTitle
        FROM videos
