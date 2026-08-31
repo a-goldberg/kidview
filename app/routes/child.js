@@ -111,6 +111,7 @@ router.get('/results', requireActiveChild, async (req, res, next) => {
       query,
       searchEventId: searchResponse.searchEventId,
       candidatesConsidered: searchResponse.candidatesConsidered,
+      sourceError: null,
       suggestions: SEARCH_SUGGESTIONS,
       results: searchResponse.results.map((result) => ({
         ...result,
@@ -120,6 +121,21 @@ router.get('/results', requireActiveChild, async (req, res, next) => {
       }))
     });
   } catch (error) {
+    if (error && error.userMessage) {
+      console.error('Child search source error:', error);
+
+      return res.status(503).render('child/results', {
+        title: 'KidView Results',
+        childProfile,
+        query,
+        searchEventId: null,
+        candidatesConsidered: 0,
+        sourceError: error.userMessage,
+        suggestions: SEARCH_SUGGESTIONS,
+        results: []
+      });
+    }
+
     next(error);
   }
 });

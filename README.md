@@ -42,7 +42,6 @@ This early milestone is intentionally boring: it creates a local scaffold, SQLit
    ```
 
 6. Open:
-
    - Child search: `http://localhost:3002/child/search`
    - Parent login: `http://localhost:3002/auth/login`
    - Parent reviews: `http://localhost:3002/parent/reviews`
@@ -156,7 +155,6 @@ The seed data loads YouTube-shaped fixture candidates from `app/services/fixture
    ```
 
 3. Visit `http://localhost:3002/child/search` and try fixture-backed searches:
-
    - `science` shows approved educational candidates. Limited educational candidates remain parent-facing.
    - `animation` shows the approved official animation sample and keeps low-confidence candidates hidden.
    - `drama` stays hidden because it requires review.
@@ -184,6 +182,7 @@ To use the YouTube Data API in production or local testing, set these server-sid
 VIDEO_SOURCE=youtube
 YOUTUBE_API_KEY=your-server-side-api-key
 YOUTUBE_MAX_SEARCH_RESULTS=10
+YOUTUBE_MAX_CANDIDATES_PER_SEARCH=40
 YOUTUBE_SAFE_SEARCH=moderate
 YOUTUBE_REGION_CODE=US
 YOUTUBE_RELEVANCE_LANGUAGE=en
@@ -193,7 +192,7 @@ The API key must stay on the server. It is read by `app/services/youtubeSourceSe
 
 Because KidView calls YouTube from Node, the API key should not be restricted by browser HTTP referrers. For production, prefer a server-side restriction such as allowed server IP addresses. For local development, either use an unrestricted development key or add a restriction that works for your local server environment. A key restricted to website referrers can fail with `Requests from referer <empty> are blocked.`
 
-The YouTube adapter calls `search.list`, fetches matching video details with `videos.list`, then maps each item into the same internal candidate shape used by the mock source. KidView still applies the same policy and moderation rules after that:
+The YouTube adapter calls `search.list`, fetches matching video details with `videos.list`, and caches the regional `videoCategories.list` response. It uses YouTube's self-assigned category title for the child-facing category label and local SVG icon rather than guessing a category from title or description text. If YouTube has no useful category, KidView shows `General` until the future server-side AI fallback is implemented. KidView still applies the same policy and moderation rules after that:
 
 - no Shorts
 - no currently live or upcoming streams
@@ -202,7 +201,9 @@ The YouTube adapter calls `search.list`, fetches matching video details with `vi
 - at most three child-visible results
 - blocked, review, and unknown items stay out of the child UI
 
-Fresh YouTube candidates are evaluated by a deterministic `rule-based-v1` moderation layer. It uses title, description, channel title, duration, live status, Short flags, embeddability, publication date, and view count. It does not use OpenAI, transcripts, thumbnails, or raw YouTube response storage.
+If the current child policy still has unfilled visible-result slots after a page is moderated, KidView fetches the next YouTube page and re-evaluates the expanded candidate set. It stops as soon as the active result cap is filled, YouTube has no next page, or it has considered 40 candidates. Preview evaluation never creates parent review items; one final evaluation writes the audit and any genuinely needed review items.
+
+Fresh YouTube candidates are evaluated by a deterministic `rule-based-v1` moderation layer. It uses title, description, channel title, duration, live status, Short flags, embeddability, publication date, view count, YouTube category, and made-for-kids status. It does not use OpenAI, transcripts, thumbnails, or raw YouTube response storage.
 
 The rule layer can auto-allow probably-safe educational/source-backed videos, but format guardrails still win:
 
@@ -239,14 +240,19 @@ Scoring starts at `50`, then adjusts up or down:
 - `+20` household-approved channel.
 - `+6` reasonable duration, currently 2 to 15 minutes.
 - View count signal: `+10` at 1,000,000+, `+6` at 100,000+, `+2` at 10,000+.
+- Healthy views per day: 500+ vpd: `+4`, which should help in cases where there are no negative signals but positive signals aren't enough to get it over the threshold.
+- YouTube category metadata is a small positive signal: Pets & Animals and Education: `+8`; Howto & Style and Science & Technology: `+5`; Autos & Vehicles: `+3`.
+- Videos marked made for kids by YouTube receive `+6`.
 - Low view count from unknown channels is negative: `-5` at 1,000 to 9,999 views, `-15` below 1,000 views.
 - `-18` risky or ambiguous terms, such as scary, secrets, drama, prank, challenge, dangerous, unboxing, shopping, gaming, or Minecraft.
 - `-40` severe risk terms, such as self-harm, sexual content, gore, weapons, poison, toxins, rooftops, or skyscrapers.
 - `-20` clickbait title patterns.
 - `-8` creator-style channel name patterns.
-- `-14` very long videos, currently over 30 minutes.
+- `-8` very long videos, currently over 30 minutes.
 - Completed livestream recordings subtract points and usually stay in review unless trusted-channel signals are strong.
 - Missing description or publication date also subtracts points.
+
+YouTube category and made-for-kids metadata can only add evidence. They never override hard filters, severe-risk terms, parent decisions, or other risk signals, and categories that are not explicitly mapped receive no boost.
 
 The confidence score is the final score divided by `100`, clamped between `0.05` and `0.99`. For example, a final score of `78` becomes confidence `0.78`.
 

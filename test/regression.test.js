@@ -854,6 +854,33 @@ test("zero-result searches appear in the search audit", async () => {
   assert.equal(event.shown_to_child_count, 0);
 });
 
+test("YouTube quota failures provide a child-safe explanation", () => {
+  const error = new youtubeSourceService.YouTubeDataApiError({
+    endpoint: "search",
+    message:
+      "Quota exceeded for quota metric 'Search Queries' and limit 'Search Queries per day' of service 'youtube.googleapis.com'"
+  });
+
+  assert.equal(error.code, "youtube_data_api_error");
+  assert.equal(
+    error.userMessage,
+    "YouTube has reached its search limit for today. Please try again tomorrow."
+  );
+  assert.match(error.message, /Quota exceeded/);
+});
+
+test("other YouTube failures do not expose provider details to children", () => {
+  const error = new youtubeSourceService.YouTubeDataApiError({
+    endpoint: "search",
+    message: "API key not valid. Please pass a valid API key."
+  });
+
+  assert.equal(
+    error.userMessage,
+    "KidView cannot search YouTube right now. Please try again in a few minutes."
+  );
+});
+
 test("non-embeddable source candidates are audited but not persisted normally", async () => {
   const originalSource = config.videoSource;
   const originalSearchCandidatePage = youtubeSourceService.searchCandidatePage;

@@ -20,6 +20,10 @@ module.exports = {
   videoSource: (process.env.VIDEO_SOURCE || 'mock').toLowerCase(),
   youtubeApiKey: process.env.YOUTUBE_API_KEY || '',
   youtubeMaxSearchResults: Number(process.env.YOUTUBE_MAX_SEARCH_RESULTS || 10),
+  youtubeMaxCandidatesPerSearch: Math.min(
+    40,
+    Math.max(1, Number(process.env.YOUTUBE_MAX_CANDIDATES_PER_SEARCH || 40))
+  ),
   youtubeSafeSearch: process.env.YOUTUBE_SAFE_SEARCH || 'moderate',
   youtubeRegionCode: process.env.YOUTUBE_REGION_CODE || 'US',
   youtubeRelevanceLanguage: process.env.YOUTUBE_RELEVANCE_LANGUAGE || 'en',
