@@ -19,6 +19,8 @@ const { getActiveChildProfile } = require('../services/childProfileSessionServic
 const {
   createChildProfile,
   createPolicyProfile,
+  deleteChildProfile,
+  deletePolicyProfile,
   getPolicyManagement,
   updateChildProfile,
   updatePolicyProfile
@@ -52,8 +54,10 @@ function sendDecisionResponse(req, res, fallbackPath, payload = {}) {
 const POLICY_SAVED_MESSAGES = Object.freeze({
   child_created: 'Child profile created.',
   child_updated: 'Child profile updated.',
+  child_deleted: 'Child profile deleted.',
   policy_created: 'Policy profile created.',
-  policy_updated: 'Policy profile updated.'
+  policy_updated: 'Policy profile updated.',
+  policy_deleted: 'Result policy deleted.'
 });
 
 function confidenceFromPercent(value) {
@@ -158,6 +162,23 @@ router.post('/profiles/policies/:policyProfileId', requireParent, (req, res, nex
   }
 });
 
+router.post('/profiles/policies/:policyProfileId/delete', requireParent, (req, res, next) => {
+  try {
+    const deleted = deletePolicyProfile({
+      householdId: req.session.parentUser.householdId,
+      policyProfileId: Number(req.params.policyProfileId)
+    });
+
+    if (!deleted) {
+      return res.status(404).render('not-found', { title: 'Result policy not found' });
+    }
+
+    return res.redirect('/parent/profiles?saved=policy_deleted#policies');
+  } catch (error) {
+    return handlePolicyManagementError(req, res, next, error);
+  }
+});
+
 router.post('/profiles/children', requireParent, (req, res, next) => {
   try {
     createChildProfile(childProfileInput(req));
@@ -179,6 +200,23 @@ router.post('/profiles/children/:childProfileId', requireParent, (req, res, next
     }
 
     return res.redirect('/parent/profiles?saved=child_updated#children');
+  } catch (error) {
+    return handlePolicyManagementError(req, res, next, error);
+  }
+});
+
+router.post('/profiles/children/:childProfileId/delete', requireParent, (req, res, next) => {
+  try {
+    const deleted = deleteChildProfile({
+      householdId: req.session.parentUser.householdId,
+      childProfileId: Number(req.params.childProfileId)
+    });
+
+    if (!deleted) {
+      return res.status(404).render('not-found', { title: 'Child profile not found' });
+    }
+
+    return res.redirect('/parent/profiles?saved=child_deleted#children');
   } catch (error) {
     return handlePolicyManagementError(req, res, next, error);
   }

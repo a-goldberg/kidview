@@ -717,6 +717,23 @@ li.risk-tags {
   gap: 0.35rem;
 }
 
+.management-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  align-items: center;
+  margin-top: 1rem;
+}
+
+.management-action-row form {
+  margin: 0;
+}
+
+.management-action-row .primary-button,
+.management-action-row .danger-button {
+  min-width: 10.5rem;
+}
+
 .channel-form {
   padding-bottom: 1rem;
   border-bottom: 1px solid var(--line);

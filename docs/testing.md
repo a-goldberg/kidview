@@ -44,6 +44,7 @@ This keeps tests useful without adding a new framework, a browser dependency, or
 | Policy writes are household-scoped | Attempt child/profile updates with the wrong household | No row changes and the service returns no updated record. |
 | Invalid policy values are rejected | Submit an invalid result cap, policy name, or zero daily limit | Policy service throws a validation error and writes nothing. |
 | Parent policy management persists profiles | Create and update a result policy and child profile through `policyService` | Assignment, names, limits, result cap, and derived posture reflect the saved values. |
+| Profile deletion is household-scoped | Delete an unneeded child profile and then its unassigned policy; attempt to delete another household's policy or the last remaining child | The selected household records are removed, an assigned policy and the final child profile are protected, and other-household records remain. |
 | Parent policy management protects household scope | Reuse a policy name and attempt to assign another household's policy | Duplicate household policy name and cross-household assignment are rejected. |
 | Active child token is signed and expires | Create valid, tampered, and expired child-selection tokens | Only the valid token resolves an active child profile. |
 | Active child selection is household-scoped | Resolve a child with a token naming the wrong household; list profiles for the demo household | The mismatched token resolves no child, and the chooser excludes another household's child. |

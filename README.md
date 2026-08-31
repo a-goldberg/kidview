@@ -125,7 +125,7 @@ The parent **Profiles & Policies** page at `/parent/profiles` supports:
 
 The parent UI derives a short content-posture summary from `allow_limited_policy`: more restricted, parent-reviewed, balanced, or broader access. These are explanatory labels, not additional stored policy values or a numeric safety score. Usage limits remain visually separate from content posture.
 
-Policy and child-profile deletion is deliberately excluded from this first management flow. Durable video and channel decisions also remain household-wide.
+Parents can delete child profiles they no longer need while retaining at least one profile in each household. Historical searches and review items remain, but lose their child-profile reference. A device with a deleted active profile returns to parent setup rather than falling back to another child. Parents can delete result policies only after reassigning every child that uses them, so deleting a policy never silently changes a child's result cap. Durable video and channel decisions remain household-wide.
 
 ### Child Profile Activation
 

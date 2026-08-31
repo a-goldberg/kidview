@@ -370,6 +370,38 @@ function updatePolicyProfile({
   return policyProfileForHousehold(householdId, policyProfileId);
 }
 
+function deletePolicyProfile({ householdId, policyProfileId }) {
+  const policyProfile = policyProfileForHousehold(householdId, policyProfileId);
+
+  if (!policyProfile) {
+    return null;
+  }
+
+  const assignedChild = db
+    .prepare(
+      `SELECT display_name
+       FROM child_profiles
+       WHERE household_id = ? AND policy_profile_id = ?
+       ORDER BY display_name, id
+       LIMIT 1`
+    )
+    .get(householdId, policyProfileId);
+
+  // Do not let a policy deletion silently switch assigned children to the
+  // default cap. Parents must choose a replacement policy first.
+  if (assignedChild) {
+    throw new RangeError(
+      `Reassign ${assignedChild.display_name} before deleting this result policy.`
+    );
+  }
+
+  const result = db
+    .prepare('DELETE FROM policy_profiles WHERE household_id = ? AND id = ?')
+    .run(householdId, policyProfileId);
+
+  return result.changes > 0;
+}
+
 function createChildProfile({
   householdId,
   policyProfileId,
@@ -462,6 +494,35 @@ function updateChildProfile({
     .get(householdId, childProfileId);
 }
 
+function deleteChildProfile({ householdId, childProfileId }) {
+  return db.transaction(() => {
+    const childProfile = db
+      .prepare('SELECT id FROM child_profiles WHERE household_id = ? AND id = ?')
+      .get(householdId, childProfileId);
+
+    if (!childProfile) {
+      return false;
+    }
+
+    const childCount = db
+      .prepare('SELECT COUNT(*) AS count FROM child_profiles WHERE household_id = ?')
+      .get(householdId).count;
+
+    // Historical searches and review items keep their record but lose the
+    // deleted profile reference through the schema's ON DELETE SET NULL rules.
+    // A household must retain a profile so child search never has an empty setup.
+    if (childCount <= 1) {
+      throw new RangeError('Create another child profile before deleting the last one.');
+    }
+
+    const result = db
+      .prepare('DELETE FROM child_profiles WHERE household_id = ? AND id = ?')
+      .run(householdId, childProfileId);
+
+    return result.changes > 0;
+  })();
+}
+
 function updateChildPolicy({
   householdId,
   childProfileId,
@@ -518,6 +579,8 @@ module.exports = {
   contentPostureFor,
   createChildProfile,
   createPolicyProfile,
+  deleteChildProfile,
+  deletePolicyProfile,
   getChildPolicy,
   getPolicyManagement,
   listPolicyProfiles,

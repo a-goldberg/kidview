@@ -445,6 +445,84 @@ test("policy management rejects duplicate names and cross-household assignment",
   );
 });
 
+test("profile deletion stays household-scoped and protects assigned policies", () => {
+  const householdId = household().id;
+  const removablePolicy = policyService.createPolicyProfile({
+    householdId,
+    name: "Temporary policy",
+    description: null,
+    maxResults: 2,
+  });
+  const assignedChild = policyService.createChildProfile({
+    householdId,
+    policyProfileId: removablePolicy.id,
+    displayName: "Temporary child",
+    birthYear: null,
+    allowLimitedPolicy: "block",
+    allowLimitedMinConfidence: 0.7,
+    dailySearchLimit: null,
+    dailyVideoWatchLimit: null,
+  });
+  const otherHousehold = db
+    .prepare("INSERT INTO households (name) VALUES ('Deletion Other Household') RETURNING id")
+    .get();
+  const otherPolicy = policyService.createPolicyProfile({
+    householdId: otherHousehold.id,
+    name: "Other deletion policy",
+    description: null,
+    maxResults: 3,
+  });
+
+  assert.throws(
+    () => policyService.deletePolicyProfile({ householdId, policyProfileId: removablePolicy.id }),
+    /Reassign Temporary child/,
+  );
+  assert.equal(
+    policyService.deleteChildProfile({ householdId, childProfileId: assignedChild.id }),
+    true,
+  );
+  assert.equal(
+    policyService.deletePolicyProfile({ householdId, policyProfileId: removablePolicy.id }),
+    true,
+  );
+  assert.equal(
+    policyService.deletePolicyProfile({ householdId, policyProfileId: otherPolicy.id }),
+    null,
+  );
+  assert.equal(
+    policyService.deleteChildProfile({ householdId, childProfileId: assignedChild.id }),
+    false,
+  );
+
+  const singleChildHousehold = db
+    .prepare("INSERT INTO households (name) VALUES ('Single Child Household') RETURNING id")
+    .get();
+  const singleChildPolicy = policyService.createPolicyProfile({
+    householdId: singleChildHousehold.id,
+    name: "Single child policy",
+    description: null,
+    maxResults: 3,
+  });
+  const onlyChild = policyService.createChildProfile({
+    householdId: singleChildHousehold.id,
+    policyProfileId: singleChildPolicy.id,
+    displayName: "Only child",
+    birthYear: null,
+    allowLimitedPolicy: "block",
+    allowLimitedMinConfidence: 0.7,
+    dailySearchLimit: null,
+    dailyVideoWatchLimit: null,
+  });
+
+  assert.throws(
+    () => policyService.deleteChildProfile({
+      householdId: singleChildHousehold.id,
+      childProfileId: onlyChild.id,
+    }),
+    /Create another child profile before deleting the last one/,
+  );
+});
+
 test("active child profile token is signed, expiring, and household-scoped", () => {
   const child = childProfile();
   const token = childProfileSessionService.createActiveChildToken({
