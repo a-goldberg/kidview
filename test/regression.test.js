@@ -1112,9 +1112,13 @@ test("child-facing categories use YouTube metadata instead of title matching", (
     title: "Science facts about otters",
     youtubeCategoryTitle: "Pets & Animals",
   });
-  const unhelpfulCategory = categoryClassificationService.classifyCandidateCategory({
+  const musicCategory = categoryClassificationService.classifyCandidateCategory({
     title: "Science facts about otters",
     youtubeCategoryTitle: "Music",
+  });
+  const unmappedCategory = categoryClassificationService.classifyCandidateCategory({
+    title: "Science facts about otters",
+    youtubeCategoryTitle: "People & Blogs",
   });
 
   assert.deepEqual(assignedCategory, {
@@ -1122,7 +1126,12 @@ test("child-facing categories use YouTube metadata instead of title matching", (
     iconKey: "animals",
     source: "youtube_category",
   });
-  assert.deepEqual(unhelpfulCategory, {
+  assert.deepEqual(musicCategory, {
+    primaryCategory: "Music",
+    iconKey: "music",
+    source: "youtube_category",
+  });
+  assert.deepEqual(unmappedCategory, {
     primaryCategory: "General",
     iconKey: "general",
     source: "general_fallback",
