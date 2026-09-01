@@ -26,10 +26,17 @@ function getParentDashboard(householdId) {
     .all(householdId);
   const recentSearches = db
     .prepare(
-      `SELECT original_query AS query, result_count, created_at
+      `SELECT
+        search_events.original_query AS query,
+        search_events.result_count,
+        search_events.created_at,
+        child_profiles.display_name AS child_profile_name
        FROM search_events
-       WHERE household_id = ?
-       ORDER BY created_at DESC
+       LEFT JOIN child_profiles
+        ON child_profiles.id = search_events.child_profile_id
+        AND child_profiles.household_id = search_events.household_id
+       WHERE search_events.household_id = ?
+       ORDER BY search_events.created_at DESC, search_events.id DESC
        LIMIT 5`
     )
     .all(householdId);
@@ -88,6 +95,7 @@ function getReviewQueueWithFilters(householdId, filters = {}) {
     .prepare(
       `SELECT
         videos.id,
+        videos.external_id,
         videos.title,
         videos.description,
         videos.duration_seconds,
@@ -157,7 +165,12 @@ function getReviewQueueWithFilters(householdId, filters = {}) {
         videos.confidence_score DESC,
         videos.id ASC`
     )
-    .all(householdId, householdId, householdId, householdId)
+    .all(householdId, householdId, householdId, householdId);
+
+  const requestingProfilesByVideoId = getReviewRequestingProfiles(householdId, videos);
+  const requestingProfilesByChannelId = new Map();
+
+  videos = videos
     .map((video) => ({
       ...video,
       labels: parseLabels(video.labels_json),
@@ -165,8 +178,15 @@ function getReviewQueueWithFilters(householdId, filters = {}) {
       risk_tags: parseLabels(video.risk_tags_json),
       quality_tags: parseLabels(video.quality_tags_json),
       queue_status: reviewStatusFor(video),
-      request_count: requestCounts.get(video.id) || 0
-    }));
+      request_count: requestCounts.get(video.id) || 0,
+      requesting_child_profile_names: requestingProfilesByVideoId.get(video.id) || []
+    }))
+    .map((video) => {
+      const names = requestingProfilesByChannelId.get(video.channel_id) || new Set();
+      video.requesting_child_profile_names.forEach((name) => names.add(name));
+      requestingProfilesByChannelId.set(video.channel_id, names);
+      return video;
+    });
 
   if (search) {
     videos = videos.filter((video) => {
@@ -230,7 +250,13 @@ function getReviewQueueWithFilters(householdId, filters = {}) {
        GROUP BY channels.id
        ORDER BY channels.title`
     )
-    .all(householdId, householdId, householdId, householdId);
+    .all(householdId, householdId, householdId, householdId)
+    .map((channel) => ({
+      ...channel,
+      requesting_child_profile_names: [
+        ...(requestingProfilesByChannelId.get(channel.id) || new Set())
+      ].sort((a, b) => a.localeCompare(b))
+    }));
 
   if (search) {
     channels = channels.filter((channel) => {
@@ -258,6 +284,49 @@ function getReviewQueueWithFilters(householdId, filters = {}) {
     videos,
     channels
   };
+}
+
+function getReviewRequestingProfiles(householdId, videos) {
+  if (!videos.length) {
+    return new Map();
+  }
+
+  const videoIds = videos.map((video) => video.id);
+  const placeholders = videoIds.map(() => '?').join(', ');
+  const rows = db
+    .prepare(
+      `SELECT DISTINCT
+        search_event_candidates.video_id,
+        child_profiles.display_name AS child_profile_name
+       FROM search_event_candidates
+       JOIN child_profiles
+        ON child_profiles.id = search_event_candidates.child_profile_id
+        AND child_profiles.household_id = search_event_candidates.household_id
+       WHERE search_event_candidates.household_id = ?
+        AND search_event_candidates.video_id IN (${placeholders})
+        AND search_event_candidates.review_queue_state IN ('created_pending', 'matched_pending')
+       UNION
+       SELECT DISTINCT
+        household_review_items.video_id,
+        child_profiles.display_name AS child_profile_name
+       FROM household_review_items
+       JOIN child_profiles
+        ON child_profiles.id = household_review_items.child_profile_id
+        AND child_profiles.household_id = household_review_items.household_id
+       WHERE household_review_items.household_id = ?
+        AND household_review_items.video_id IN (${placeholders})
+       ORDER BY child_profile_name COLLATE NOCASE`
+    )
+    .all(householdId, ...videoIds, householdId, ...videoIds);
+
+  const profilesByVideoId = new Map();
+  rows.forEach((row) => {
+    const names = profilesByVideoId.get(row.video_id) || [];
+    names.push(row.child_profile_name);
+    profilesByVideoId.set(row.video_id, names);
+  });
+
+  return profilesByVideoId;
 }
 
 function getShownVideoRequestCounts(householdId) {

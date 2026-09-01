@@ -1,6 +1,8 @@
 const express = require('express');
 const { markNotWhatIMeant, recordClickedVideo, search } = require('../services/searchService');
 const { getChildSafeVideo } = require('../services/moderationService');
+const { getChildPolicy } = require('../services/policyService');
+const { recordPlaybackProgress, startPlayback } = require('../services/usageService');
 const {
   getActiveChildProfile,
   getChildProfileForHousehold,
@@ -105,6 +107,19 @@ router.get('/results', requireActiveChild, async (req, res, next) => {
         })
       : { query, searchEventId: null, candidatesConsidered: 0, results: [] };
 
+    if (searchResponse.limitReached) {
+      return res.status(429).render('child/results', {
+        title: 'KidView Results',
+        childProfile,
+        query,
+        searchEventId: null,
+        candidatesConsidered: 0,
+        sourceError: 'Today\'s search limit has been reached. Please try again tomorrow.',
+        suggestions: SEARCH_SUGGESTIONS,
+        results: []
+      });
+    }
+
     res.render('child/results', {
       title: 'KidView Results',
       childProfile,
@@ -187,6 +202,107 @@ router.post('/search-events/:searchEventId/not-what-i-meant', requireActiveChild
   }
 
   res.redirect(`/child/search?tryAgain=1&q=${encodeURIComponent(query)}`);
+});
+
+function jsonError(res, status, code, message, extra = {}) {
+  return res.status(status).json({ ok: false, code, message, ...extra });
+}
+
+// The child cookie establishes both household and child identity.  The safe-video
+// lookup is repeated immediately before every playback start, not just when the
+// result card was originally rendered.
+router.post('/videos/:videoId/playback/start', requireActiveChild, (req, res) => {
+  const childProfile = req.activeChildProfile;
+  const videoId = Number(req.params.videoId);
+  const video = getChildSafeVideo({
+    householdId: childProfile.householdId,
+    childProfileId: childProfile.id,
+    videoId
+  });
+
+  if (!video) {
+    return jsonError(res, 403, 'video_unavailable', 'This video is no longer available.');
+  }
+
+  const policy = getChildPolicy({
+    householdId: childProfile.householdId,
+    childProfileId: childProfile.id
+  });
+  const result = startPlayback({
+    householdId: childProfile.householdId,
+    childProfileId: childProfile.id,
+    videoId: video.videoId,
+    policy,
+    durationSeconds: video.durationSeconds
+  });
+
+  if (!result.allowed) {
+    return jsonError(res, 429, 'daily_watch_limit_reached', 'Today\'s video limit has been reached. Please try again tomorrow.', {
+      watchLimit: result.usage.watches
+    });
+  }
+
+  return res.json({
+    ok: true,
+    playback: {
+      id: result.playback.id,
+      videoId: video.videoId,
+      startedAt: result.playback.started_at,
+      resumed: result.resumed,
+      durationSeconds: result.durationSeconds,
+      watchLimit: result.usage.watches
+    }
+  });
+});
+
+router.post('/videos/:videoId/playback/progress', requireActiveChild, (req, res) => {
+  const childProfile = req.activeChildProfile;
+  const videoId = Number(req.params.videoId);
+  const body = req.body || {};
+  const playbackId = Number(body.playbackId);
+  const video = getChildSafeVideo({
+    householdId: childProfile.householdId,
+    childProfileId: childProfile.id,
+    videoId
+  });
+
+  if (!video) {
+    return jsonError(res, 403, 'video_unavailable', 'This video is no longer available.');
+  }
+
+  if (!Number.isInteger(playbackId) || playbackId < 1) {
+    return jsonError(res, 400, 'invalid_playback', 'A valid playback session is required.');
+  }
+
+  const result = recordPlaybackProgress({
+    householdId: childProfile.householdId,
+    childProfileId: childProfile.id,
+    videoId: video.videoId,
+    playbackId,
+    currentTimeSeconds: body.currentTimeSeconds,
+    durationSeconds: video.durationSeconds
+  });
+
+  if (result.error === 'invalid_progress') {
+    return jsonError(res, 400, 'invalid_progress', 'Playback progress must be a non-negative number.');
+  }
+
+  if (result.error === 'playback_not_found') {
+    return jsonError(res, 404, 'playback_not_found', 'Playback session not found.');
+  }
+
+  const playback = result.playback;
+  return res.json({
+    ok: true,
+    playback: {
+      id: playback.id,
+      videoId: video.videoId,
+      startedAt: playback.started_at,
+      lastProgressAt: playback.last_progress_at,
+      maxProgressSeconds: playback.max_progress_seconds,
+      completedAt: playback.completed_at
+    }
+  });
 });
 
 module.exports = router;

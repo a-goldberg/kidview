@@ -107,7 +107,7 @@ Current configurable values are:
 - `child_profiles.daily_search_limit`: nullable; `NULL` means unlimited.
 - `child_profiles.daily_video_watch_limit`: nullable; `NULL` means unlimited.
 
-Daily search and watch limits are configurable from the parent profile controls but are not enforced yet. Accurate watch-limit enforcement will require actual playback/watch events rather than the current single clicked-video field on a search event.
+Daily search limits are enforced before a source request is made. Daily video limits are enforced before an eligible video starts: KidView counts distinct videos started by that child on the configured local calendar day, so restarting the same video does not consume another allowance. Playback progress is recorded from the embedded player as bounded, monotonic server-side session data; it is not a client-provided “watched” assertion. Set `USAGE_TIME_ZONE` to define the household-day boundary (the default is `America/Chicago`).
 
 The original schema also contains `policy_profiles.allow_shorts` and `policy_profiles.allow_livestreams`. These are inactive scaffolding and are deliberately not exposed or honored by the policy service. Shorts and live/upcoming streams remain v1 format guardrails. Non-embeddable videos remain a playback constraint rather than a parent-configurable moderation setting.
 
@@ -134,7 +134,7 @@ Child profiles are not login accounts. A parent establishes the active child pro
 1. KidView requires the parent to log in before it lists household child profiles.
 2. The parent chooses one profile owned by that household.
 3. KidView stores the choice in a signed, HTTP-only, same-site cookie for 30 days, signs the parent out, and returns to child search.
-4. Child search, results, playback placeholders, moderation, and audit records use that active profile until a parent switches it or the cookie expires.
+4. Child search, results, playback, moderation, usage limits, and audit records use that active profile until a parent switches it or the cookie expires.
 
 The signed cookie contains only household and child-profile IDs plus its issue time. Every request rechecks that the child still belongs to the household, and an invalid, expired, deleted, or mismatched selection returns the browser to the profile setup flow. KidView never falls back to the first child profile in the database. Switching profiles requires parent authentication again, which keeps profile names and household controls out of the unauthenticated child experience.
 
@@ -162,7 +162,7 @@ The seed data loads YouTube-shaped fixture candidates from `app/services/fixture
    - `drama` stays hidden because it requires review.
    - `otters` shows through an approved channel decision.
 
-   Child results should show at most three cards. They use local category icons and link to KidView placeholder video pages.
+   Child results should show at most three cards. They use local category icons and link to KidView’s embedded playback page.
 
 4. Log in at `http://localhost:3002/auth/login`.
 
@@ -297,7 +297,7 @@ KidView keeps global source data separate from household workflow state:
 - `household_review_items` stores parent-actionable review queue items for one household.
 - Durable parent choices still live in `household_video_decisions` and `household_channel_decisions`.
 
-The parent review page shows pending `review` and `unknown` items, plus automated `allow_limited` items when the child profile policy is `review`. Hard blocks are not normal review queue items: Shorts, non-embeddable videos, live/upcoming streams, blocked channels, and durable household block decisions are filtered or resolved outside the queue. They remain visible in search audit history so a parent can understand the decision and later create a specific video exception where the format guardrails permit one.
+The parent review page shows pending `review` and `unknown` items, plus automated `allow_limited` items when the child profile policy is `review`. It identifies the child profiles that requested an item when the audit record is available, and parents can preview eligible YouTube items in KidView or open the video/channel on YouTube before deciding. Hard blocks are not normal review queue items: Shorts, non-embeddable videos, live/upcoming streams, blocked channels, and durable household block decisions are filtered or resolved outside the queue. They remain visible in search audit history so a parent can understand the decision and later create a specific video exception where the format guardrails permit one.
 
 Approving or blocking a video resolves the pending review item and writes the durable household video decision. Ignoring a video or clearing the queue marks pending items as `dismissed` for the current household only; it does not delete videos, channels, moderation reviews, search history, or parent decisions. If a child searches for the same dismissed video again later, KidView may create a new pending review item unless a durable household video/channel decision already applies.
 
@@ -327,7 +327,7 @@ For browser-level validation after running the automated regression suite:
 
 4. Open `/child/search`, log in when prompted, choose the seeded child profile, and confirm the parent session is signed out before child search appears.
 5. Search as a child for `science`, `animation`, `drama`, and `otters`.
-6. Confirm the selected child name appears on search, results, and playback placeholder pages.
+6. Confirm the selected child name appears on search, results, and playback pages.
 7. Confirm child-visible results respect the selected profile's one-to-three result cap and use local category icons.
 8. Confirm hard-blocked items, Shorts, live/upcoming streams, review, and unknown items do not appear to children. Confirm `allow_limited` follows the selected child profile policy.
 9. Confirm a zero-result child search appears in `/parent/searches` when the zero-result view is selected.
@@ -365,14 +365,13 @@ Then restart the app.
 ## Planned Features
 
 - Search-audit override actions: let a parent create an exact video decision directly from an audited candidate while preserving format guardrails.
-- Safe playback and usage accounting: replace placeholder watch pages with embedded playback and add the watch events needed to enforce future daily limits.
 
 ## Useful Scripts
 
 - `npm run dev` starts the app with Node's watch mode.
 - `npm start` starts the app normally.
-- `npm run pm2:start` starts KidView through PM2 using `ecosystem.config.js`.
-- `npm run pm2:restart` restarts the PM2-managed KidView process.
+- `npm run pm2:start` applies pending migrations, then starts KidView through PM2 using `ecosystem.config.js`.
+- `npm run pm2:restart` applies pending migrations, then restarts the PM2-managed KidView process. This keeps new application code from starting against an older local schema.
 - `npm run pm2:stop` stops the PM2-managed KidView process.
 - `npm run pm2:status` shows PM2 status for KidView.
 - `npm run pm2:logs` tails KidView PM2 logs.

@@ -23,9 +23,10 @@ app.use(
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        scriptSrc: ["'self'"],
+        scriptSrc: ["'self'", 'https://www.youtube.com'],
         styleSrc: ["'self'"],
-        imgSrc: ["'self'", 'data:'],
+        imgSrc: ["'self'", 'data:', 'https://i.ytimg.com'],
+        frameSrc: ['https://www.youtube-nocookie.com'],
         baseUri: ["'self'"],
         formAction: ["'self'"]
       }
@@ -43,6 +44,7 @@ app.use(
 );
 
 app.use(express.urlencoded({ extended: false }));
+app.use(express.json({ limit: '16kb' }));
 app.use(express.static(path.join(__dirname, 'app', 'public')));
 
 app.use(

@@ -25,7 +25,7 @@ const RULE_MODEL_NAME = "rule-based-v1"
 const RULE_PROMPT_VERSION = "rules-v1"
 
 const SEVERE_RISK_PATTERN =
-  /suicide|self[- ]?harm|p[0o]{1}rn|pr[o0]{1}n|pstars|prnstars|x{3,}|bbw|boot(y|ie)|butt(?!er)|\banal\b|brazzers|\btit(s|ties)?\b|\bsexx?(y|ual)?|nak[ei]d|boobies|\bdicks?\b|\brape(\b|s)|\bslut|gore|murder|kill|weapon|gun|knife|flamethrower|poison|toxin|skyscraper|rooftop/i
+  /suicide|self[- ]?harm|p[0o]{1}rn|pr[o0]{1}n|pstars|prnstars|x{3,}|bbw|boot(y|ie)|butt(?!er)|\bass\b|\banal\b|brazzers|\btit(s|ties)?\b|\bsexx?(y|ual)?|nak[ei]d|boobies|\bdicks?\b|\brape(\b|s)|\bslut|gore|murder|kill|weapon|gun|knife|flamethrower|poison|toxin|skyscraper|rooftop/i
 const RISK_PATTERN =
   /scary|secret|secrets|exposed|drama|breakup|rumor|prank|challenge|mystery box|unboxing|haul|shopping|spent \$|won't believe|do not try|dangerous|gaming|minecraft|roblox|fortnite|dark fantasy|pvp|boob|breasts|graphic/i
 const CLICKBAIT_PATTERN =
@@ -798,6 +798,7 @@ function normalizeCandidate(candidate, decisionResult) {
 
   return {
     videoId: candidate.videoId,
+    externalId: candidate.externalId,
     title: candidate.title,
     channelTitle: candidate.channelTitle,
     durationSeconds: candidate.durationSeconds,
@@ -1096,6 +1097,7 @@ function moderateCandidates({
 function selectModerationCandidate() {
   return `SELECT
     videos.id AS videoId,
+    videos.external_id AS externalId,
     videos.title,
     videos.description,
     videos.duration_seconds AS durationSeconds,

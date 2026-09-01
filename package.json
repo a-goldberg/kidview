@@ -1,6 +1,6 @@
 {
   "name": "kidview",
-  "version": "0.2.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Household-controlled child video discovery gateway.",
   "main": "server.js",
@@ -9,8 +9,8 @@
     "dev": "node --watch server.js",
     "test": "node --test",
     "test:regression": "node --test test/regression.test.js",
-    "pm2:start": "PM2_HOME=.pm2 pm2 startOrRestart ecosystem.config.js --only kidview",
-    "pm2:restart": "PM2_HOME=.pm2 pm2 startOrRestart ecosystem.config.js --only kidview --update-env",
+    "pm2:start": "npm run db:migrate && PM2_HOME=.pm2 pm2 startOrRestart ecosystem.config.js --only kidview",
+    "pm2:restart": "npm run db:migrate && PM2_HOME=.pm2 pm2 startOrRestart ecosystem.config.js --only kidview --update-env",
     "pm2:stop": "PM2_HOME=.pm2 pm2 stop kidview",
     "pm2:logs": "PM2_HOME=.pm2 pm2 logs kidview",
     "pm2:status": "PM2_HOME=.pm2 pm2 status kidview",

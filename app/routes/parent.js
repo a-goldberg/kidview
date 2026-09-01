@@ -1,4 +1,5 @@
 const express = require('express');
+const db = require('../db/database');
 const {
   getDecisionHistory,
   getParentDashboard,
@@ -38,6 +39,27 @@ function requireParent(req, res, next) {
 
 function wantsJson(req) {
   return String(req.get('accept') || '').includes('application/json');
+}
+
+function getReviewPreviewVideo(householdId, videoId) {
+  return db.prepare(
+    `SELECT
+      videos.id,
+      videos.source,
+      videos.external_id AS external_id,
+      videos.title,
+      videos.description,
+      videos.duration_seconds,
+      videos.primary_category,
+      channels.title AS channel_title,
+      channels.external_id AS channel_external_id
+     FROM household_review_items
+     JOIN videos ON videos.id = household_review_items.video_id
+     JOIN channels ON channels.id = videos.channel_id
+     WHERE household_review_items.household_id = ?
+       AND household_review_items.video_id = ?
+       AND household_review_items.status = 'pending'`
+  ).get(householdId, videoId);
 }
 
 function sendDecisionResponse(req, res, fallbackPath, payload = {}) {
@@ -228,6 +250,23 @@ router.get('/reviews', requireParent, (req, res) => {
   res.render('parent/reviews', {
     title: 'Review Videos',
     reviewQueue
+  });
+});
+
+router.get('/reviews/videos/:videoId/preview', requireParent, (req, res, next) => {
+  const video = getReviewPreviewVideo(
+    req.session.parentUser.householdId,
+    Number(req.params.videoId)
+  );
+
+  if (!video) {
+    return next();
+  }
+
+  return res.render('parent/video-preview', {
+    title: `Preview: ${video.title}`,
+    video,
+    canEmbed: video.source === 'youtube' && Boolean(video.external_id)
   });
 });
 
