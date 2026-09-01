@@ -6,6 +6,7 @@ const {
   classifyCandidateCategory,
 } = require("./categoryClassificationService");
 const { getChildPolicy } = require("./policyService");
+const { consumeDailySearch } = require("./usageService");
 const youtubeSourceService = require("./youtubeSourceService");
 
 function classifyCandidate(candidate) {
@@ -481,6 +482,22 @@ async function search({ query, householdId, childProfileId }) {
   }
 
   const policy = getChildPolicy({ householdId, childProfileId });
+  const searchAllowance = consumeDailySearch({
+    householdId,
+    childProfileId,
+    policy,
+  });
+
+  if (!searchAllowance.allowed) {
+    return {
+      query: safeQuery,
+      candidatesConsidered: 0,
+      results: [],
+      limitReached: true,
+      usage: searchAllowance.usage,
+    };
+  }
+
   const sourceResponse = await getSourceCandidates({
     query: safeQuery,
     householdId,

@@ -1,0 +1,36 @@
+<%- include('../partials/head', { title }) %>
+<%- include('../partials/header') %>
+
+<main class="page narrow-page">
+  <section class="video-player">
+    <p class="eyebrow">Parent preview</p>
+    <p class="category"><%= video.primary_category %> · <%= Math.round(video.duration_seconds / 60) %> min</p>
+    <h1><%= video.title %></h1>
+    <p class="channel"><%= video.channel_title %></p>
+    <% if (canEmbed) { %>
+      <div class="player-stage">
+        <iframe
+          title="Preview: <%= video.title %>"
+          src="https://www.youtube-nocookie.com/embed/<%= encodeURIComponent(video.external_id) %>?rel=0&modestbranding=1"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          allowfullscreen></iframe>
+      </div>
+    <% } else { %>
+      <section class="panel">
+        <p>This source cannot be previewed in KidView.</p>
+      </section>
+    <% } %>
+    <% if (video.description) { %><p class="muted"><%= video.description %></p><% } %>
+    <div class="action-row">
+      <a class="primary-button" href="/parent/reviews">Back to reviews</a>
+      <% if (video.external_id) { %>
+        <a class="secondary-button" href="https://www.youtube.com/watch?v=<%= encodeURIComponent(video.external_id) %>" target="_blank" rel="noopener noreferrer">Open on YouTube</a>
+      <% } %>
+      <% if (video.channel_external_id) { %>
+        <a class="secondary-button" href="https://www.youtube.com/channel/<%= encodeURIComponent(video.channel_external_id) %>" target="_blank" rel="noopener noreferrer">Open channel</a>
+      <% } %>
+    </div>
+  </section>
+</main>
+
+<%- include('../partials/footer') %>

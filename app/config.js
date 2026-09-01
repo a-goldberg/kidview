@@ -27,5 +27,6 @@ module.exports = {
   youtubeSafeSearch: process.env.YOUTUBE_SAFE_SEARCH || 'moderate',
   youtubeRegionCode: process.env.YOUTUBE_REGION_CODE || 'US',
   youtubeRelevanceLanguage: process.env.YOUTUBE_RELEVANCE_LANGUAGE || 'en',
+  usageTimeZone: process.env.USAGE_TIME_ZONE || 'America/Chicago',
   rootDir
 };

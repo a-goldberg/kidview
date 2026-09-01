@@ -6,6 +6,7 @@
     <p class="eyebrow">Parent reviews</p>
     <h1>Review videos</h1>
     <p class="muted">Parent-facing reasons stay here and are never shown in the child UI.</p>
+    <p class="muted compact-note">Video and channel decisions apply across this household. Later valid search candidates may be affected, while each profile’s format and safety rules still apply.</p>
   </section>
 
   <%- include('dashboard-nav', { activeSection: 'reviews' }) %>
@@ -67,6 +68,15 @@
             <p class="category"><%= video.primary_category %> · <%= Math.round(video.duration_seconds / 60) %> min · <%= displayLabel('finalDecision', video.queue_status, displayLocale) %></p>
             <h3><%= video.title %></h3>
             <p class="muted"><%= video.channel_title %></p>
+            <% if (Array.isArray(video.requesting_child_profile_names) && video.requesting_child_profile_names.length) { %>
+              <p class="muted compact-note">Requested by: <%= video.requesting_child_profile_names.join(', ') %></p>
+            <% } %>
+            <div class="preview-link-row">
+              <a class="secondary-button small-button" href="/parent/reviews/videos/<%= video.id %>/preview">Preview video</a>
+              <% if (video.external_id) { %>
+                <a class="secondary-button small-button" href="https://www.youtube.com/watch?v=<%= encodeURIComponent(video.external_id) %>" target="_blank" rel="noopener noreferrer">Open on YouTube</a>
+              <% } %>
+            </div>
             <ul class="label-list">
               <% video.labels.forEach((label) => { %>
                 <li><%= label %></li>
@@ -137,6 +147,12 @@
           <form class="channel-form" action="/parent/reviews/channels/<%= channel.id %>/decision" method="post" data-async-decision>
             <strong><%= channel.title %></strong>
             <span class="muted"><%= channel.pending_video_count %> pending video<%= channel.pending_video_count === 1 ? '' : 's' %></span>
+            <% if (Array.isArray(channel.requesting_child_profile_names) && channel.requesting_child_profile_names.length) { %>
+              <span class="muted compact-note">Requested by: <%= channel.requesting_child_profile_names.join(', ') %></span>
+            <% } %>
+            <% if (channel.external_id) { %>
+              <a class="secondary-button small-button" href="https://www.youtube.com/channel/<%= encodeURIComponent(channel.external_id) %>" target="_blank" rel="noopener noreferrer">Open channel on YouTube</a>
+            <% } %>
             <span class="muted">Current: <strong data-decision-current><%= displayLabel('channelDecision', channel.decision || 'none', displayLocale) %></strong></span>
             <input name="reason" placeholder="Parent note" value="<%= channel.parent_facing_reason || '' %>">
             <div class="button-row">

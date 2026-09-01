@@ -53,7 +53,9 @@ const decisionService = require("../app/services/decisionService");
 const childProfileSessionService = require("../app/services/childProfileSessionService");
 const categoryClassificationService = require("../app/services/categoryClassificationService");
 const policyService = require("../app/services/policyService");
+const householdService = require("../app/services/householdService");
 const searchService = require("../app/services/searchService");
+const usageService = require("../app/services/usageService");
 const youtubeSourceService = require("../app/services/youtubeSourceService");
 
 test.after(() => {
@@ -1138,6 +1140,57 @@ test("child-facing categories use YouTube metadata instead of title matching", (
   });
 });
 
+test("parent review context identifies child profiles that requested pending content", () => {
+  const child = childProfile();
+  const pendingVideo = db
+    .prepare(
+      `SELECT videos.id, videos.channel_id, videos.title
+       FROM videos
+       JOIN household_review_items
+        ON household_review_items.video_id = videos.id
+       WHERE household_review_items.household_id = ?
+        AND household_review_items.status = 'pending'
+       LIMIT 1`
+    )
+    .get(child.household_id);
+
+  assert.ok(pendingVideo, "Expected a pending review video in the seeded household");
+
+  const event = db
+    .prepare(
+      `INSERT INTO search_events (household_id, child_profile_id, query, original_query)
+       VALUES (?, ?, ?, ?)`
+    )
+    .run(child.household_id, child.id, "parent context regression", "parent context regression");
+
+  db.prepare(
+    `INSERT INTO search_event_candidates (
+      search_event_id, household_id, child_profile_id, video_id, channel_id,
+      title, channel_title, final_decision, visibility_reason, review_queue_state
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'review', 'Needs parent review.', 'matched_pending')`
+  ).run(
+    event.lastInsertRowid,
+    child.household_id,
+    child.id,
+    pendingVideo.id,
+    pendingVideo.channel_id,
+    pendingVideo.title,
+    "Regression channel"
+  );
+
+  const queue = householdService.getReviewQueue(child.household_id);
+  const dashboard = householdService.getParentDashboard(child.household_id);
+  const queueVideo = queue.videos.find((video) => video.id === pendingVideo.id);
+  const queueChannel = queue.channels.find((channel) => channel.id === pendingVideo.channel_id);
+  const dashboardSearch = dashboard.recentSearches.find(
+    (search) => search.query === "parent context regression"
+  );
+
+  assert.deepEqual(queueVideo.requesting_child_profile_names, [child.display_name]);
+  assert.ok(queueChannel.requesting_child_profile_names.includes(child.display_name));
+  assert.equal(dashboardSearch.child_profile_name, child.display_name);
+});
+
 function youtubeBackfillCandidate(externalVideoId, overrides = {}) {
   return {
     source: "youtube",
@@ -1256,4 +1309,103 @@ test("YouTube backfill stops after the active result cap is filled", async () =>
   assert.equal(callCount, 1);
   assert.equal(event.source_candidate_count, 3);
   assert.equal(summary.sourcePagesFetched, 1);
+});
+
+test("daily search limits stop retrieval before a second search is admitted", async () => {
+  const parent = parentUser();
+  const child = policyService.createChildProfile({
+    householdId: parent.household_id,
+    policyProfileId: policyProfile().id,
+    displayName: 'Search limit regression child',
+    birthYear: 2019,
+    allowLimitedPolicy: 'block',
+    allowLimitedMinConfidence: 0.7,
+    dailySearchLimit: 1,
+    dailyVideoWatchLimit: null
+  });
+
+  const first = await searchService.search({
+    query: 'science',
+    householdId: parent.household_id,
+    childProfileId: child.id
+  });
+  const second = await searchService.search({
+    query: 'animals',
+    householdId: parent.household_id,
+    childProfileId: child.id
+  });
+
+  assert.equal(first.limitReached, undefined);
+  assert.equal(second.limitReached, true);
+  assert.equal(second.usage.searches.limit, 1);
+  assert.equal(second.usage.searches.used, 1);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM search_events WHERE child_profile_id = ?').get(child.id).count, 1);
+});
+
+test("daily video limits count distinct started videos and bound progress server-side", () => {
+  const parent = parentUser();
+  const child = policyService.createChildProfile({
+    householdId: parent.household_id,
+    policyProfileId: policyProfile().id,
+    displayName: 'Watch limit regression child',
+    birthYear: 2018,
+    allowLimitedPolicy: 'block',
+    allowLimitedMinConfidence: 0.7,
+    dailySearchLimit: null,
+    dailyVideoWatchLimit: 1
+  });
+  const policy = policyService.getChildPolicy({
+    householdId: parent.household_id,
+    childProfileId: child.id
+  });
+  const firstVideo = videoByExternalId('3g246c6Bv58');
+  const secondVideo = videoByExternalId('tra66666666');
+
+  const first = usageService.startPlayback({
+    householdId: parent.household_id,
+    childProfileId: child.id,
+    videoId: firstVideo.id,
+    policy,
+    durationSeconds: 100
+  });
+  const resumed = usageService.startPlayback({
+    householdId: parent.household_id,
+    childProfileId: child.id,
+    videoId: firstVideo.id,
+    policy,
+    durationSeconds: 100
+  });
+  const blocked = usageService.startPlayback({
+    householdId: parent.household_id,
+    childProfileId: child.id,
+    videoId: secondVideo.id,
+    policy,
+    durationSeconds: 100
+  });
+  const progress = usageService.recordPlaybackProgress({
+    householdId: parent.household_id,
+    childProfileId: child.id,
+    videoId: firstVideo.id,
+    playbackId: first.playback.id,
+    currentTimeSeconds: 99999,
+    durationSeconds: 100
+  });
+
+  assert.equal(first.allowed, true);
+  assert.equal(first.resumed, false);
+  assert.equal(resumed.allowed, true);
+  assert.equal(resumed.resumed, true);
+  assert.equal(resumed.usage.watches.used, 1);
+  assert.equal(blocked.allowed, false);
+  assert.equal(blocked.usage.watches.remaining, 0);
+  assert.equal(progress.playback.max_progress_seconds, 100);
+  assert.ok(progress.playback.completed_at);
+  assert.equal(usageService.recordPlaybackProgress({
+    householdId: parent.household_id,
+    childProfileId: child.id,
+    videoId: firstVideo.id,
+    playbackId: first.playback.id,
+    currentTimeSeconds: -1,
+    durationSeconds: 100
+  }).error, 'invalid_progress');
 });

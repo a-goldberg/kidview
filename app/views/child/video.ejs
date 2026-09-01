@@ -2,15 +2,19 @@
 <%- include('../partials/header') %>
 
 <main class="page narrow-page">
-  <section class="video-player-placeholder">
+  <section class="video-player" data-kidview-player data-video-id="<%= video.videoId %>" data-youtube-video-id="<%= video.externalId %>">
     <%- include('profile-context', { childProfile }) %>
-    <div class="video-icon large-icon">
-      <img src="<%= video.iconPath %>" alt="" aria-hidden="true">
+    <div class="player-stage" data-player-stage>
+      <div class="player-loading" data-player-loading>
+        <img src="<%= video.iconPath %>" alt="" aria-hidden="true">
+        <p>Getting this video ready…</p>
+      </div>
     </div>
     <p class="category"><%= video.primaryCategory %> · <%= Math.round(video.durationSeconds / 60) %> min</p>
     <h1><%= video.title %></h1>
     <p><%= video.childExplanation %></p>
     <p class="channel"><%= video.channelTitle %></p>
+    <p class="muted player-status" data-player-status role="status" aria-live="polite">Checking today’s watch time…</p>
     <div class="action-row">
       <% if (resultsUrl) { %>
         <a class="primary-button" href="<%= resultsUrl %>">More results</a>
@@ -20,4 +24,5 @@
   </section>
 </main>
 
+<script defer src="/js/video-player.js"></script>
 <%- include('../partials/footer') %>

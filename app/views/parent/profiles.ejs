@@ -83,7 +83,7 @@
                   <input id="child-<%= child.id %>-watch-limit" name="dailyVideoWatchLimit" type="number" min="1" step="1" value="<%= child.daily_video_watch_limit || '' %>" placeholder="Unlimited" inputmode="numeric">
                 </label>
               </div>
-              <small class="muted">Limits saved for now; enforcement begins when KidView tracks playback.</small>
+              <small class="muted">Daily search limits apply before a search runs. Daily video limits count distinct videos started today.</small>
 
             </form>
             <div class="management-action-row">
@@ -155,7 +155,7 @@
                   <input id="new-child-watch-limit" name="dailyVideoWatchLimit" type="number" min="1" step="1" placeholder="Unlimited" inputmode="numeric">
                 </label>
               </div>
-              <small class="muted">Limits saved for now; enforcement begins when KidView tracks playback.</small>
+              <small class="muted">Daily search limits apply before a search runs. Daily video limits count distinct videos started today.</small>
               <div class="button-row">
                 <button class="primary-button" type="submit">Create child profile</button>
               </div>

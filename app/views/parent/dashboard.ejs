@@ -32,7 +32,7 @@
           <% dashboard.recentSearches.forEach((event) => { %>
             <li>
               <strong><%= event.query %></strong>
-              <span><%= event.result_count %> result(s)</span>
+              <span><%= event.child_profile_name || 'No child profile' %> · <%= event.created_at %></span>
             </li>
           <% }) %>
         </ul>
