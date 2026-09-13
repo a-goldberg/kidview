@@ -10,6 +10,7 @@ const testDbPath = path.join(os.tmpdir(), `kidview-http-${process.pid}.sqlite`);
 process.env.NODE_ENV = 'test';
 process.env.DATABASE_PATH = testDbPath;
 process.env.VIDEO_SOURCE = 'mock';
+process.env.APP_ORIGIN = '';
 process.env.SESSION_SECRET = 'http-test-session-secret-at-least-32-characters';
 process.env.SEED_PARENT_EMAIL = 'parent@example.com';
 process.env.SEED_PARENT_PASSWORD = 'password123';
@@ -83,16 +84,20 @@ test('serves login with hardened response headers', async () => {
   );
 });
 
-test('rejects unsafe requests without same-origin browser evidence', async () => {
+test('permits missing source headers in local development', async () => {
   const missingEvidence = await fetch(`${baseUrl}/auth/login`, {
     method: 'POST',
+    redirect: 'manual',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
       email: 'parent@example.com',
       password: 'password123',
     }),
   });
-  assert.equal(missingEvidence.status, 403);
+  assert.equal(missingEvidence.status, 302);
+});
+
+test('rejects explicit cross-origin browser evidence', async () => {
 
   const crossOrigin = await post(
     '/auth/login',
@@ -185,6 +190,20 @@ test('production proxy configuration produces secure session cookies', async () 
 
   try {
     const productionUrl = `http://127.0.0.1:${productionServer.address().port}`;
+    const missingEvidence = await fetch(`${productionUrl}/auth/login`, {
+      method: 'POST',
+      redirect: 'manual',
+      headers: {
+        'x-forwarded-proto': 'https',
+        'content-type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        email: 'parent@example.com',
+        password: 'password123',
+      }),
+    });
+    assert.equal(missingEvidence.status, 403);
+
     const response = await fetch(`${productionUrl}/auth/login`, {
       method: 'POST',
       redirect: 'manual',

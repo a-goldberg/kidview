@@ -405,7 +405,7 @@ The PM2 app is named `kidview`, binds to `127.0.0.1:3002`, and writes local logs
 
 A new child search is `POST /child/search`, followed by a redirect to `GET /child/results?searchEventId=...`.  Reopening those results does not consume another search.  It rechecks the originally shown videos against current policy without writing moderation or queue state.  Old query-only result links open the search form.  A search allowance is consumed when the search is admitted, including when the source later fails.
 
-Unsafe requests require same-origin browser evidence (`Origin`, `Referer`, or `Sec-Fetch-Site: same-origin`).  Scripts making authenticated POST requests must include the matching origin.  Missing or cross-origin evidence returns 403, including on login.  Failed logins have a separate limit of 10 attempts per 15 minutes per client IP.
+Unsafe requests use same-origin browser evidence (`Origin`, `Referer`, or `Sec-Fetch-Site: same-origin`).  Explicit cross-origin or malformed evidence returns 403, including on login.  Some local browsers and embedded preview surfaces omit all of these headers, so development and test environments allow the fully missing-header case.  Production still requires positive same-origin evidence.  Scripts making authenticated production POST requests must include the matching origin.  Failed logins have a separate limit of 10 attempts per 15 minutes per client IP.
 
 YouTube requests time out after `YOUTUBE_REQUEST_TIMEOUT_MS` (default 10000).  Pagination also has independent page and repeated-token limits.  Search text is limited to 200 characters.  Malformed provider list responses produce a controlled error rather than silently becoming empty results.
 

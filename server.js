@@ -80,7 +80,11 @@ function createApp(options = {}) {
     }),
   );
 
-  app.use(requireSameOrigin(appConfig.appOrigin));
+  app.use(
+    requireSameOrigin(appConfig.appOrigin, {
+      allowMissingEvidence: !appConfig.isProduction,
+    }),
+  );
 
   app.use((req, res, next) => {
     res.locals.currentParent = req.session.parentUser || null;
