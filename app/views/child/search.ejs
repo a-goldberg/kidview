@@ -8,14 +8,17 @@
     <% if (wasNotWhatIMeant) { %>
       <p class="muted">No problem. Try another word or pick one of these ideas.</p>
     <% } %>
-    <form class="search-form" action="/child/results" method="get">
+    <form class="search-form" action="/child/search" method="post">
       <label class="visually-hidden" for="q">Search videos</label>
-      <input id="q" name="q" type="search" autocomplete="off" placeholder="Try science, otters, fractions, or animation" value="<%= query %>" required>
+      <input id="q" name="q" type="search" maxlength="200" autocomplete="off" placeholder="Try science, otters, fractions, or animation" value="<%= query %>" required>
       <button class="primary-button" type="submit">Search</button>
     </form>
     <div class="suggestion-list" aria-label="Search ideas">
       <% suggestions.forEach((suggestion) => { %>
-        <a href="/child/results?q=<%= encodeURIComponent(suggestion) %>"><%= suggestion %></a>
+        <form action="/child/search" method="post">
+          <input type="hidden" name="q" value="<%= suggestion %>">
+          <button type="submit"><%= suggestion %></button>
+        </form>
       <% }) %>
     </div>
     <% if (childProfile) { %>

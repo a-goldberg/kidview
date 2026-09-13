@@ -1,148 +1,142 @@
-const bcrypt = require('bcrypt');
-const db = require('../app/db/database');
-const config = require('../app/config');
-const { classifyCandidateCategory } = require('../app/services/categoryClassificationService');
-const youtubeSampleCandidates = require('../app/services/fixtures/youtubeSampleCandidates');
+const bcrypt = require("bcrypt");
+const db = require("../app/db/database");
+const config = require("../app/config");
+const {
+  classifyCandidate,
+  childExplanationFor,
+} = require("../app/services/candidatePresentationService");
+const youtubeSampleCandidates = require("../app/services/fixtures/youtubeSampleCandidates");
 
-const existingHousehold = db.prepare('SELECT id FROM households LIMIT 1').get();
+if (
+  config.isProduction &&
+  (!process.env.SEED_PARENT_PASSWORD ||
+    config.seedParentPassword === config.defaultSeedPassword)
+) {
+  throw new Error(
+    "Production seed requires an explicit, non-default SEED_PARENT_PASSWORD.",
+  );
+}
+
+const existingHousehold = db.prepare("SELECT id FROM households LIMIT 1").get();
 
 if (existingHousehold) {
-  console.log('Seed data already exists.');
+  console.log("Seed data already exists.");
   process.exit(0);
 }
 
 const CHANNEL_DECISIONS = {
   UCpVm7bg6pXKo1Pr6k5kx7vA: {
-    decision: 'approved',
-    reason: 'Seeded as a trusted science-style channel.'
+    decision: "approved",
+    reason: "Seeded as a trusted science-style channel.",
   },
   UC_REVIEW_FIRST_CHANNEL: {
-    decision: 'review_first',
-    reason: 'Teen drama channel should be reviewed before child display.'
+    decision: "review_first",
+    reason: "Teen drama channel should be reviewed before child display.",
   },
   UC_BLOCKED_CHANNEL_ID: {
-    decision: 'blocked',
-    reason: 'Dangerous stunt channel is blocked for this household.'
-  }
+    decision: "blocked",
+    reason: "Dangerous stunt channel is blocked for this household.",
+  },
 };
 
 const VIDEO_DECISIONS = {
-  '3g246c6Bv58': {
-    decision: 'allow',
-    reason: 'Good science/nature explainer for the demo household.'
+  "3g246c6Bv58": {
+    decision: "allow",
+    reason: "Good science/nature explainer for the demo household.",
   },
   tra66666666: {
-    decision: 'allow_limited',
-    reason: 'Useful educational video, but keep it in limited child-facing contexts.'
+    decision: "allow_limited",
+    reason:
+      "Useful educational video, but keep it in limited child-facing contexts.",
   },
   dQw4w9WgXcQ: {
-    decision: 'block',
-    reason: 'Music video is outside this child discovery policy.'
+    decision: "block",
+    reason: "Music video is outside this child discovery policy.",
   },
   par88888888: {
-    decision: 'review_required',
-    reason: 'History topic may be educational but includes weapon discussion.'
-  }
+    decision: "review_required",
+    reason: "History topic may be educational but includes weapon discussion.",
+  },
 };
 
 const REVIEW_STATUSES = {
   rev22222222: {
-    status: 'review',
-    reason: 'Needs parent review because it centers on teen drama and rumors.'
+    status: "review",
+    reason: "Needs parent review because it centers on teen drama and rumors.",
   },
   unk33333333: {
-    status: 'unknown',
-    reason: 'New creator with too little household context.'
+    status: "unknown",
+    reason: "New creator with too little household context.",
   },
   mdl44444444: {
-    status: 'review',
-    reason: 'Game content references poison/toxin mechanics.'
+    status: "review",
+    reason: "Game content references poison/toxin mechanics.",
   },
   lim77777777: {
-    status: 'review',
-    reason: 'High-stimulation slime content should be reviewed before approval.'
+    status: "review",
+    reason:
+      "High-stimulation slime content should be reviewed before approval.",
   },
   not55555555: {
-    status: 'unknown',
-    reason: 'No-speech ambient audio needs a parent decision.'
-  }
+    status: "unknown",
+    reason: "No-speech ambient audio needs a parent decision.",
+  },
 };
 
-function classifyCandidate(candidate) {
-  const text = `${candidate.title} ${candidate.description} ${candidate.channelTitle}`;
-  const labels = [];
-  const liveStatus = candidate.liveStatus || (candidate.isLivestream ? 'completed_live' : 'none');
-
-  if (candidate.isShort) labels.push('short');
-  if (liveStatus === 'live') labels.push('live');
-  if (liveStatus === 'upcoming') labels.push('upcoming-live');
-  if (liveStatus === 'completed_live') labels.push('completed-live');
-  if (!candidate.embeddable) labels.push('not-embeddable');
-  if (/toy|slime|surprise|mystery|clickbait|won't believe/i.test(text)) labels.push('high-stimulation');
-  if (/math|fraction|science|nature|history|animation/i.test(text)) labels.push('learning');
-  if (/dangerous|stunt|weapon|flamethrower|poison|toxin/i.test(text)) labels.push('needs-care');
-
-  return {
-    ...classifyCandidateCategory(candidate),
-    labels
-  };
-}
-
 function confidenceFor(candidate) {
-  const liveStatus = candidate.liveStatus || (candidate.isLivestream ? 'completed_live' : 'none');
+  const liveStatus =
+    candidate.liveStatus ||
+    (candidate.isLivestream ? "completed_live" : "none");
 
   if (VIDEO_DECISIONS[candidate.externalVideoId]) return 0.95;
   if (CHANNEL_DECISIONS[candidate.channelExternalId]) return 0.88;
   if (REVIEW_STATUSES[candidate.externalVideoId]) return 0.72;
-  if (candidate.isShort || liveStatus === 'live' || liveStatus === 'upcoming' || !candidate.embeddable) return 0.4;
-  if (liveStatus === 'completed_live') return 0.5;
+  if (
+    candidate.isShort ||
+    liveStatus === "live" ||
+    liveStatus === "upcoming" ||
+    !candidate.embeddable
+  )
+    return 0.4;
+  if (liveStatus === "completed_live") return 0.5;
   return 0.62;
-}
-
-function childExplanationFor(candidate, classification) {
-  if (classification.primaryCategory === 'Animals') {
-    return 'A KidView candidate about nature, animals, or the world around us.';
-  }
-
-  if (classification.primaryCategory === 'Science') {
-    return 'A KidView candidate that explains an idea in a simple way.';
-  }
-
-  if (classification.primaryCategory === 'Art') {
-    return 'A KidView candidate about making, building, or animation.';
-  }
-
-  return 'A KidView candidate waiting for household review.';
 }
 
 const passwordHash = bcrypt.hashSync(config.seedParentPassword, 12);
 
 db.transaction(() => {
-  const household = db.prepare('INSERT INTO households (name) VALUES (?)').run('Demo Household');
+  const household = db
+    .prepare("INSERT INTO households (name) VALUES (?)")
+    .run("Demo Household");
 
   const policy = db
     .prepare(
       `INSERT INTO policy_profiles
-        (household_id, name, description, max_results, allow_shorts, allow_livestreams)
-       VALUES (?, ?, ?, 3, 0, 0)`
+        (household_id, name, description, max_results)
+       VALUES (?, ?, ?, 3)`,
     )
     .run(
       household.lastInsertRowid,
-      'Default Child Policy',
-      'Shows at most three calm, approved discovery results.'
+      "Default Child Policy",
+      "Shows at most three calm, approved discovery results.",
     );
 
   const parentUser = db
     .prepare(
       `INSERT INTO parent_users (household_id, email, password_hash, display_name)
-       VALUES (?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?)`,
     )
-    .run(household.lastInsertRowid, config.seedParentEmail, passwordHash, 'Demo Parent');
+    .run(
+      household.lastInsertRowid,
+      config.seedParentEmail,
+      passwordHash,
+      "Demo Parent",
+    );
 
   db.prepare(
     `INSERT INTO child_profiles (household_id, policy_profile_id, display_name, birth_year)
-     VALUES (?, ?, ?, ?)`
-  ).run(household.lastInsertRowid, policy.lastInsertRowid, 'Demo Child', 2018);
+     VALUES (?, ?, ?, ?)`,
+  ).run(household.lastInsertRowid, policy.lastInsertRowid, "Demo Child", 2018);
 
   const insertChannel = db.prepare(
     `INSERT INTO channels (source, external_id, title)
@@ -150,7 +144,7 @@ db.transaction(() => {
      ON CONFLICT(source, external_id) DO UPDATE SET
       title = excluded.title,
       updated_at = CURRENT_TIMESTAMP
-     RETURNING id`
+     RETURNING id`,
   );
   const insertVideo = db.prepare(
     `INSERT INTO videos (
@@ -176,7 +170,7 @@ db.transaction(() => {
       made_for_kids
     )
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    RETURNING id`
+    RETURNING id`,
   );
 
   const channelIdsByExternalId = new Map();
@@ -185,14 +179,20 @@ db.transaction(() => {
   for (const candidate of youtubeSampleCandidates) {
     const channelId =
       channelIdsByExternalId.get(candidate.channelExternalId) ||
-      insertChannel.get(candidate.source, candidate.channelExternalId, candidate.channelTitle).id;
+      insertChannel.get(
+        candidate.source,
+        candidate.channelExternalId,
+        candidate.channelTitle,
+      ).id;
     const classification = classifyCandidate(candidate);
-    const liveStatus = candidate.liveStatus || (candidate.isLivestream ? 'completed_live' : 'none');
+    const liveStatus =
+      candidate.liveStatus ||
+      (candidate.isLivestream ? "completed_live" : "none");
     const parentExplanation =
       VIDEO_DECISIONS[candidate.externalVideoId]?.reason ||
       REVIEW_STATUSES[candidate.externalVideoId]?.reason ||
       CHANNEL_DECISIONS[candidate.channelExternalId]?.reason ||
-      'No household decision has been made yet.';
+      "No household decision has been made yet.";
     const videoId = insertVideo.get(
       channelId,
       candidate.source,
@@ -207,13 +207,13 @@ db.transaction(() => {
       childExplanationFor(candidate, classification),
       parentExplanation,
       candidate.isShort ? 1 : 0,
-      liveStatus === 'none' ? 0 : 1,
+      liveStatus === "none" ? 0 : 1,
       liveStatus,
       candidate.publishedAt || null,
       Number(candidate.viewCount || 0),
       candidate.youtubeCategoryId || null,
       candidate.youtubeCategoryTitle || null,
-      candidate.madeForKids ? 1 : 0
+      candidate.madeForKids ? 1 : 0,
     ).id;
 
     channelIdsByExternalId.set(candidate.channelExternalId, channelId);
@@ -223,7 +223,7 @@ db.transaction(() => {
   const insertVideoDecision = db.prepare(
     `INSERT INTO household_video_decisions
       (household_id, video_id, decision, parent_facing_reason, decided_by_parent_user_id)
-     VALUES (?, ?, ?, ?, ?)`
+     VALUES (?, ?, ?, ?, ?)`,
   );
 
   for (const [externalVideoId, decision] of Object.entries(VIDEO_DECISIONS)) {
@@ -238,17 +238,19 @@ db.transaction(() => {
       videoId,
       decision.decision,
       decision.reason,
-      parentUser.lastInsertRowid
+      parentUser.lastInsertRowid,
     );
   }
 
   const insertChannelDecision = db.prepare(
     `INSERT INTO household_channel_decisions
       (household_id, channel_id, decision, parent_facing_reason, decided_by_parent_user_id)
-     VALUES (?, ?, ?, ?, ?)`
+     VALUES (?, ?, ?, ?, ?)`,
   );
 
-  for (const [externalChannelId, decision] of Object.entries(CHANNEL_DECISIONS)) {
+  for (const [externalChannelId, decision] of Object.entries(
+    CHANNEL_DECISIONS,
+  )) {
     const channelId = channelIdsByExternalId.get(externalChannelId);
 
     if (!channelId) {
@@ -260,7 +262,7 @@ db.transaction(() => {
       channelId,
       decision.decision,
       decision.reason,
-      parentUser.lastInsertRowid
+      parentUser.lastInsertRowid,
     );
   }
 
@@ -275,17 +277,19 @@ db.transaction(() => {
       confidence_score,
       primary_category
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
   );
   const insertReviewItem = db.prepare(
     `INSERT INTO household_review_items
       (household_id, child_profile_id, video_id, status, reason_code)
      VALUES (?, ?, ?, 'pending', ?)
-     ON CONFLICT(household_id, video_id) WHERE status = 'pending' DO NOTHING`
+     ON CONFLICT(household_id, video_id) WHERE status = 'pending' DO NOTHING`,
   );
 
   for (const [externalVideoId, review] of Object.entries(REVIEW_STATUSES)) {
-    const candidate = youtubeSampleCandidates.find((item) => item.externalVideoId === externalVideoId);
+    const candidate = youtubeSampleCandidates.find(
+      (item) => item.externalVideoId === externalVideoId,
+    );
 
     if (!candidate || !videoIdsByExternalId.get(externalVideoId)) {
       continue;
@@ -301,17 +305,19 @@ db.transaction(() => {
       review.reason,
       review.reason,
       confidenceFor(candidate),
-      classification.primaryCategory
+      classification.primaryCategory,
     );
     insertReviewItem.run(
       household.lastInsertRowid,
       null,
       videoIdsByExternalId.get(externalVideoId),
-      review.status
+      review.status,
     );
   }
 })();
 
-console.log(`Seeded Demo Household with ${youtubeSampleCandidates.length} YouTube sample candidates.`);
+console.log(
+  `Seeded Demo Household with ${youtubeSampleCandidates.length} YouTube sample candidates.`,
+);
 console.log(`Parent login: ${config.seedParentEmail}`);
-console.log(`Parent password: ${config.seedParentPassword}`);
+console.log("Parent password: use SEED_PARENT_PASSWORD from your local environment.");

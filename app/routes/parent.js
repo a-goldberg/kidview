@@ -73,6 +73,29 @@ function sendDecisionResponse(req, res, fallbackPath, payload = {}) {
   return res.redirect(fallbackPath);
 }
 
+function handleDecisionError(req, res, next, error) {
+  if (!(error instanceof RangeError)) {
+    return next(error);
+  }
+
+  if (wantsJson(req)) {
+    return res.status(400).json({ ok: false, error: error.message });
+  }
+
+  return res.status(400).render('not-found', {
+    title: 'Invalid parent action',
+    message: error.message
+  });
+}
+
+function sendDecisionNotFound(req, res, title) {
+  if (wantsJson(req)) {
+    return res.status(404).json({ ok: false, error: title });
+  }
+
+  return res.status(404).render('not-found', { title });
+}
+
 const POLICY_SAVED_MESSAGES = Object.freeze({
   child_created: 'Child profile created.',
   child_updated: 'Child profile updated.',
@@ -304,36 +327,48 @@ router.get('/searches/:searchEventId', requireParent, (req, res, next) => {
   });
 });
 
-router.post('/reviews/videos/:videoId/decision', requireParent, (req, res) => {
-  upsertVideoDecision({
-    householdId: req.session.parentUser.householdId,
-    parentUserId: req.session.parentUser.id,
-    videoId: Number(req.params.videoId),
-    decision: req.body.decision,
-    reason: req.body.reason
-  });
+router.post('/reviews/videos/:videoId/decision', requireParent, (req, res, next) => {
+  try {
+    const saved = upsertVideoDecision({
+      householdId: req.session.parentUser.householdId,
+      parentUserId: req.session.parentUser.id,
+      videoId: Number(req.params.videoId),
+      decision: req.body.decision,
+      reason: req.body.reason
+    });
 
-  sendDecisionResponse(req, res, '/parent/reviews', {
-    decision: req.body.decision,
-    decisionLabel: displayLabel('finalDecision', req.body.decision),
-    removeCard: true,
-    message: 'Video decision saved.'
-  });
+    if (!saved) {
+      return sendDecisionNotFound(req, res, 'Video not found');
+    }
+
+    return sendDecisionResponse(req, res, '/parent/reviews', {
+      decision: saved.decision,
+      decisionLabel: displayLabel('finalDecision', saved.decision),
+      removeCard: true,
+      message: 'Video decision saved.'
+    });
+  } catch (error) {
+    return handleDecisionError(req, res, next, error);
+  }
 });
 
-router.post('/reviews/videos/:videoId/ignore', requireParent, (req, res) => {
-  const ignoredCount = ignoreReviewVideo({
-    householdId: req.session.parentUser.householdId,
-    parentUserId: req.session.parentUser.id,
-    videoId: Number(req.params.videoId)
-  });
+router.post('/reviews/videos/:videoId/ignore', requireParent, (req, res, next) => {
+  try {
+    const ignoredCount = ignoreReviewVideo({
+      householdId: req.session.parentUser.householdId,
+      parentUserId: req.session.parentUser.id,
+      videoId: Number(req.params.videoId)
+    });
 
-  sendDecisionResponse(req, res, '/parent/reviews', {
-    removeCard: ignoredCount > 0,
-    message: ignoredCount > 0
-      ? 'Video ignored and removed from this review queue.'
-      : 'No pending review item was found for this video.'
-  });
+    return sendDecisionResponse(req, res, '/parent/reviews', {
+      removeCard: ignoredCount > 0,
+      message: ignoredCount > 0
+        ? 'Video ignored and removed from this review queue.'
+        : 'No pending review item was found for this video.'
+    });
+  } catch (error) {
+    return handleDecisionError(req, res, next, error);
+  }
 });
 
 router.post('/reviews/bulk', requireParent, (req, res) => {
@@ -389,54 +424,75 @@ router.post('/reviews/bulk', requireParent, (req, res) => {
   res.redirect(`/parent/reviews?${query.toString()}`);
 });
 
-router.post('/decisions/videos/:videoId', requireParent, (req, res) => {
-  upsertVideoDecision({
+router.post('/decisions/videos/:videoId', requireParent, (req, res, next) => {
+  try {
+    const saved = upsertVideoDecision({
     householdId: req.session.parentUser.householdId,
     parentUserId: req.session.parentUser.id,
     videoId: Number(req.params.videoId),
     decision: req.body.decision,
     reason: req.body.reason
-  });
+    });
 
-  sendDecisionResponse(
+    if (!saved) {
+      return sendDecisionNotFound(req, res, 'Video not found');
+    }
+
+    return sendDecisionResponse(
     req,
     res,
     `/parent/decisions?kind=${encodeURIComponent(req.body.kind || 'all')}&search=${encodeURIComponent(req.body.search || '')}&sort=${encodeURIComponent(req.body.sort || 'updated_newest')}`,
     {
-      decision: req.body.decision,
-      decisionLabel: displayLabel('finalDecision', req.body.decision),
+      decision: saved.decision,
+      decisionLabel: displayLabel('finalDecision', saved.decision),
       message: 'Video decision updated.'
     }
-  );
+    );
+  } catch (error) {
+    return handleDecisionError(req, res, next, error);
+  }
 });
 
-router.post('/reviews/channels/:channelId/decision', requireParent, (req, res) => {
-  const remoderatedCount = upsertChannelDecision({
+router.post('/reviews/channels/:channelId/decision', requireParent, (req, res, next) => {
+  try {
+    const remoderatedCount = upsertChannelDecision({
     householdId: req.session.parentUser.householdId,
     parentUserId: req.session.parentUser.id,
     channelId: Number(req.params.channelId),
     decision: req.body.decision,
     reason: req.body.reason
-  });
+    });
 
-  sendDecisionResponse(req, res, '/parent/reviews', {
+    if (remoderatedCount === null) {
+      return sendDecisionNotFound(req, res, 'Channel not found');
+    }
+
+    return sendDecisionResponse(req, res, '/parent/reviews', {
     decision: req.body.decision,
     decisionLabel: displayLabel('channelDecision', req.body.decision),
     removeCard: false,
     message: `Channel decision saved. Re-scored ${remoderatedCount} known video${remoderatedCount === 1 ? '' : 's'}.`
-  });
+    });
+  } catch (error) {
+    return handleDecisionError(req, res, next, error);
+  }
 });
 
-router.post('/decisions/channels/:channelId', requireParent, (req, res) => {
-  const remoderatedCount = upsertChannelDecision({
+router.post('/decisions/channels/:channelId', requireParent, (req, res, next) => {
+  try {
+    const remoderatedCount = upsertChannelDecision({
     householdId: req.session.parentUser.householdId,
     parentUserId: req.session.parentUser.id,
     channelId: Number(req.params.channelId),
     decision: req.body.decision,
     reason: req.body.reason
-  });
+    });
 
-  sendDecisionResponse(
+    if (remoderatedCount === null) {
+      return sendDecisionNotFound(req, res, 'Channel not found');
+    }
+
+    return sendDecisionResponse(
     req,
     res,
     `/parent/decisions?kind=${encodeURIComponent(req.body.kind || 'all')}&search=${encodeURIComponent(req.body.search || '')}&sort=${encodeURIComponent(req.body.sort || 'updated_newest')}`,
@@ -445,7 +501,10 @@ router.post('/decisions/channels/:channelId', requireParent, (req, res) => {
       decisionLabel: displayLabel('channelDecision', req.body.decision),
       message: `Channel decision updated. Re-scored ${remoderatedCount} known video${remoderatedCount === 1 ? '' : 's'}.`
     }
-  );
+    );
+  } catch (error) {
+    return handleDecisionError(req, res, next, error);
+  }
 });
 
 module.exports = router;

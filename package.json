@@ -34,5 +34,8 @@
   },
   "devDependencies": {
     "prettier-plugin-ejs": "^1.0.3"
+  },
+  "overrides": {
+    "qs": "^6.16.0"
   }
 }

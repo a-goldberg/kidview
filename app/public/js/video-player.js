@@ -69,7 +69,8 @@
     try {
       const response = await fetch(`/child/videos/${videoId}/playback/start`, {
         method: 'POST',
-        headers: { accept: 'application/json' }
+        headers: { accept: 'application/json', 'content-type': 'application/json' },
+        body: JSON.stringify({ searchEventId: root.dataset.searchEventId })
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {

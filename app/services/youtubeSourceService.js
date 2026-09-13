@@ -76,7 +76,7 @@ async function fetchYouTubeJson(path, params) {
   let response;
 
   try {
-    response = await fetch(url);
+    response = await fetch(url, { signal: AbortSignal.timeout(config.youtubeRequestTimeoutMs) });
   } catch (error) {
     const sourceError = new YouTubeDataApiError({
       endpoint: path,
@@ -86,13 +86,27 @@ async function fetchYouTubeJson(path, params) {
     throw sourceError;
   }
 
-  const body = await response.json().catch(() => ({}));
+  let body;
+  try {
+    body = await response.json();
+  } catch (_) {
+    throw new YouTubeDataApiError({ endpoint: path, message: 'The service returned invalid JSON.' });
+  }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    throw new YouTubeDataApiError({ endpoint: path, message: 'The service returned an invalid response.' });
+  }
 
   if (!response.ok) {
     const message = body.error && body.error.message ? body.error.message : response.statusText;
     throw new YouTubeDataApiError({ endpoint: path, message });
   }
 
+  // Successful list responses must have a list shape, even for zero results.
+  // A malformed response should not silently become an empty child search.
+  if (!Array.isArray(body.items) ||
+      (body.nextPageToken !== undefined && typeof body.nextPageToken !== 'string')) {
+    throw new YouTubeDataApiError({ endpoint: path, message: 'The service returned an invalid list.' });
+  }
   return body;
 }
 
@@ -139,8 +153,6 @@ function mapYouTubeVideo(video, categoryTitles) {
     transcriptSample: null,
     primaryCategoryHint: null,
     viewCount: Number(statistics.viewCount || 0),
-    likeCount: Number(statistics.likeCount || 0),
-    commentCount: Number(statistics.commentCount || 0)
   };
 }
 
@@ -153,7 +165,8 @@ function getCategoryTitles() {
       .then((response) =>
         new Map(
           (response.items || [])
-            .filter((category) => category.id && category.snippet && category.snippet.title)
+            .filter((category) => category && typeof category.id === 'string' &&
+              category.snippet && typeof category.snippet.title === 'string')
             .map((category) => [category.id, category.snippet.title]),
         ),
       )
@@ -183,8 +196,8 @@ async function searchCandidatePage(query, { pageToken = null, maxResults } = {})
   });
 
   const videoIds = (searchResponse.items || [])
-    .map((item) => item.id && item.id.videoId)
-    .filter(Boolean);
+    .map((item) => item && item.id && item.id.videoId)
+    .filter((id) => typeof id === 'string' && /^[A-Za-z0-9_-]{11}$/.test(id));
 
   if (!videoIds.length) {
     return {
@@ -201,7 +214,13 @@ async function searchCandidatePage(query, { pageToken = null, maxResults } = {})
 
   const videosById = new Map(
     (videosResponse.items || [])
-    .filter((video) => video.id && video.snippet && video.contentDetails && video.status)
+    .filter((video) => video && typeof video.id === 'string' &&
+      video.snippet && typeof video.snippet.title === 'string' &&
+      typeof video.snippet.channelId === 'string' && typeof video.snippet.channelTitle === 'string' &&
+      typeof video.snippet.publishedAt === 'string' &&
+      (video.snippet.description === undefined || typeof video.snippet.description === 'string') &&
+      video.contentDetails && typeof video.contentDetails.duration === 'string' &&
+      video.status && typeof video.status.embeddable === 'boolean')
     .map((video) => [video.id, mapYouTubeVideo(video, categoryTitles)])
   );
 

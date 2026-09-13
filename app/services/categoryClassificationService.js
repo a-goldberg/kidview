@@ -12,14 +12,6 @@ const YOUTUBE_CATEGORY_PRESENTATION = new Map([
   ["Documentary", { iconKey: "documentary" }],
 ]);
 
-function classifyUnknownCategoryWithAi(_candidate) {
-  // Future integration point: return a validated { primaryCategory, iconKey }
-  // only when YouTube has no useful self-assigned category. It intentionally
-  // returns null until a server-side provider, evaluation set, and audit policy
-  // are approved.
-  return null;
-}
-
 function classifyCandidateCategory(candidate) {
   const youtubeCategoryTitle = String(
     candidate.youtubeCategoryTitle || "",
@@ -34,11 +26,6 @@ function classifyCandidateCategory(candidate) {
       source: "youtube_category",
     };
   }
-  const aiCategory = classifyUnknownCategoryWithAi(candidate);
-
-  if (aiCategory) {
-    return { ...aiCategory, source: "ai_category" };
-  }
 
   return {
     primaryCategory: "General",
@@ -49,5 +36,4 @@ function classifyCandidateCategory(candidate) {
 
 module.exports = {
   classifyCandidateCategory,
-  classifyUnknownCategoryWithAi,
 };

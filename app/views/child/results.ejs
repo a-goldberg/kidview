@@ -27,7 +27,10 @@
       <p class="muted">Try another search idea, or ask a parent to review more videos.</p>
       <div class="suggestion-list" aria-label="Search ideas">
         <% suggestions.forEach((suggestion) => { %>
-          <a href="/child/results?q=<%= encodeURIComponent(suggestion) %>"><%= suggestion %></a>
+          <form action="/child/search" method="post">
+          <input type="hidden" name="q" value="<%= suggestion %>">
+          <button type="submit"><%= suggestion %></button>
+        </form>
         <% }) %>
       </div>
       <a class="secondary-button" href="/child/search?q=<%= encodeURIComponent(query) %>">Search again</a>

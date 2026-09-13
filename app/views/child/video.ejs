@@ -2,7 +2,7 @@
 <%- include('../partials/header') %>
 
 <main class="page narrow-page">
-  <section class="video-player" data-kidview-player data-video-id="<%= video.videoId %>" data-youtube-video-id="<%= video.externalId %>">
+  <section class="video-player" data-kidview-player data-video-id="<%= video.videoId %>" data-search-event-id="<%= searchEventId || '' %>" data-youtube-video-id="<%= video.externalId %>">
     <%- include('profile-context', { childProfile }) %>
     <div class="player-stage" data-player-stage>
       <div class="player-loading" data-player-loading>

@@ -2,72 +2,11 @@ const db = require("../db/database");
 const config = require("../config");
 const mockVideoSourceService = require("./mockVideoSourceService");
 const moderationService = require("./moderationService");
-const {
-  classifyCandidateCategory,
-} = require("./categoryClassificationService");
+const { classifyCandidate, confidenceFor, childExplanationFor } = require("./candidatePresentationService");
+const { MODERATION_CANDIDATE_SELECT } = require("./moderationCandidateService");
 const { getChildPolicy } = require("./policyService");
 const { consumeDailySearch } = require("./usageService");
 const youtubeSourceService = require("./youtubeSourceService");
-
-function classifyCandidate(candidate) {
-  const text = [candidate.title, candidate.description, candidate.channelTitle]
-    .filter(Boolean)
-    .join(" ");
-  const labels = [];
-  const liveStatus =
-    candidate.liveStatus ||
-    (candidate.isLivestream ? "completed_live" : "none");
-
-  if (candidate.isShort) labels.push("short");
-  if (liveStatus === "live") labels.push("live");
-  if (liveStatus === "upcoming") labels.push("upcoming-live");
-  if (liveStatus === "completed_live") labels.push("completed-live");
-  if (!candidate.embeddable) labels.push("not-embeddable");
-  if (/math|fraction|science|nature|history|animation|biology/i.test(text))
-    labels.push("learning");
-  if (/dangerous|stunt|weapon|flamethrower|poison|toxin/i.test(text))
-    labels.push("needs-care");
-  if (/toy|slime|surprise|mystery|won't believe|do not try/i.test(text))
-    labels.push("high-stimulation");
-
-  return {
-    ...classifyCandidateCategory(candidate),
-    labels,
-  };
-}
-
-function confidenceFor(candidate) {
-  const liveStatus =
-    candidate.liveStatus ||
-    (candidate.isLivestream ? "completed_live" : "none");
-
-  if (
-    candidate.isShort ||
-    liveStatus === "live" ||
-    liveStatus === "upcoming" ||
-    !candidate.embeddable
-  )
-    return 0.35;
-  if (liveStatus === "completed_live") return 0.5;
-  if (candidate.primaryCategoryHint) return 0.7;
-  return 0.6;
-}
-
-function childExplanationFor(candidate, classification) {
-  if (classification.iconKey === "animals") {
-    return "A KidView candidate about nature, animals, or the world around us.";
-  }
-
-  if (["education", "science"].includes(classification.iconKey)) {
-    return "A KidView candidate that explains an idea in a simple way.";
-  }
-
-  if (["animation", "art", "making"].includes(classification.iconKey)) {
-    return "A KidView candidate about making, building, or animation.";
-  }
-
-  return "A KidView-approved video.";
-}
 
 function upsertSourceCandidates(candidates) {
   if (!candidates.length) {
@@ -128,32 +67,7 @@ function upsertSourceCandidates(candidates) {
       updated_at = CURRENT_TIMESTAMP
     RETURNING id`,
   );
-  const selectCandidate = db.prepare(
-    `SELECT
-      videos.id AS videoId,
-      videos.title,
-      videos.description,
-      videos.duration_seconds AS durationSeconds,
-      videos.primary_category AS primaryCategory,
-      videos.icon_key AS iconKey,
-      videos.labels_json AS labelsJson,
-      videos.confidence_score AS confidenceScore,
-      videos.child_explanation AS childExplanation,
-      videos.parent_explanation AS parentExplanation,
-      videos.is_short AS isShort,
-      videos.is_livestream AS isLivestream,
-      videos.live_status AS liveStatus,
-      videos.published_at AS publishedAt,
-      videos.view_count AS viewCount,
-      videos.youtube_category_id AS youtubeCategoryId,
-      videos.youtube_category_title AS youtubeCategoryTitle,
-      videos.made_for_kids AS madeForKids,
-      channels.id AS channelId,
-      channels.title AS channelTitle
-     FROM videos
-     JOIN channels ON channels.id = videos.channel_id
-     WHERE videos.id = ?`,
-  );
+  const selectCandidate = db.prepare(`${MODERATION_CANDIDATE_SELECT} WHERE videos.id = ?`);
 
   return db.transaction(() =>
     candidates
@@ -236,15 +150,25 @@ async function getYouTubeSourceCandidates({
   let nextPageToken = null;
   let pagesFetched = 0;
   let previewResults = [];
+  const seenPageTokens = new Set();
+  const seenVideoIds = new Set();
+  // Independently bound API calls even when returned IDs have no video details.
+  const maxPages = Math.ceil(config.youtubeMaxCandidatesPerSearch / config.youtubeMaxSearchResults);
 
   do {
+    seenPageTokens.add(nextPageToken);
     const remaining =
       config.youtubeMaxCandidatesPerSearch - youtubeCandidates.length;
     const page = await youtubeSourceService.searchCandidatePage(query, {
       pageToken: nextPageToken,
       maxResults: Math.min(config.youtubeMaxSearchResults, remaining),
     });
-    const pageCandidates = (page.candidates || []).map((candidate, index) => ({
+    const uniqueCandidates = (page.candidates || []).filter((candidate) => {
+      if (seenVideoIds.has(candidate.externalVideoId)) return false;
+      seenVideoIds.add(candidate.externalVideoId);
+      return true;
+    }).slice(0, remaining);
+    const pageCandidates = uniqueCandidates.map((candidate, index) => ({
       ...candidate,
       sourceRank: youtubeCandidates.length + index + 1,
     }));
@@ -272,6 +196,8 @@ async function getYouTubeSourceCandidates({
   } while (
     previewResults.length < policy.maxResults &&
     nextPageToken &&
+    !seenPageTokens.has(nextPageToken) &&
+    pagesFetched < maxPages &&
     youtubeCandidates.length < config.youtubeMaxCandidatesPerSearch
   );
 
@@ -349,10 +275,6 @@ function writeSearchAudit({
       child_profile_id,
       query,
       original_query,
-      clarified_query,
-      query_intent,
-      clarification_options_json,
-      selected_clarification,
       shown_video_ids_json,
       result_count,
       source_mode,
@@ -366,7 +288,7 @@ function writeSearchAudit({
       shown_to_child_count,
       audit_summary_json
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
   const insertCandidate = db.prepare(
     `INSERT INTO search_event_candidates (
@@ -410,10 +332,6 @@ function writeSearchAudit({
       childProfileId || null,
       query,
       query,
-      query,
-      `${sourceResponse.sourceName}_discovery`,
-      JSON.stringify([]),
-      null,
       JSON.stringify(shownVideoIds),
       results.length,
       sourceResponse.sourceName,
@@ -481,6 +399,10 @@ async function search({ query, householdId, childProfileId }) {
     };
   }
 
+  if (safeQuery.length > 200) {
+    throw new RangeError("Search terms must be 200 characters or fewer.");
+  }
+
   const policy = getChildPolicy({ householdId, childProfileId });
   const searchAllowance = consumeDailySearch({
     householdId,
@@ -505,24 +427,18 @@ async function search({ query, householdId, childProfileId }) {
     policy,
   });
   const candidates = sourceResponse.candidates;
-  const moderation = moderationService.moderateCandidatesWithDiagnostics({
-    householdId,
-    childProfileId,
-    candidates,
-    limit: policy.maxResults,
-    policy,
-  });
-  const results = moderation.results;
-
-  // Search audit intentionally stores compact metadata, not raw API payloads or transcript text.
-  const searchEvent = writeSearchAudit({
-    householdId,
-    childProfileId,
-    query: safeQuery,
-    sourceResponse,
-    moderation,
-    results,
-  });
+  // All household moderation/queue/audit writes succeed or roll back together.
+  // Network retrieval and source caching above stay outside this transaction.
+  const { moderation, results, searchEvent } = db.transaction(() => {
+    const moderation = moderationService.moderateCandidatesWithDiagnostics({
+      householdId, childProfileId, candidates, limit: policy.maxResults, policy,
+    });
+    const results = moderation.results;
+    const searchEvent = writeSearchAudit({
+      householdId, childProfileId, query: safeQuery, sourceResponse, moderation, results,
+    });
+    return { moderation, results, searchEvent };
+  })();
 
   if (!config.isProduction && sourceResponse.sourceName === "youtube") {
     const hardRejected =
@@ -548,28 +464,47 @@ async function search({ query, householdId, childProfileId }) {
   };
 }
 
-function markNotWhatIMeant({ searchEventId, householdId }) {
-  return db
-    .prepare(
-      `UPDATE search_events
-       SET not_what_i_meant = 1
-       WHERE id = ? AND household_id = ?`,
-    )
-    .run(searchEventId, householdId).changes;
+// Reopening results never performs a new search or changes usage/audit state.
+// Revalidate only the original displayed IDs against current household policy.
+function getSavedSearch({ searchEventId, householdId, childProfileId }) {
+  if (!Number.isSafeInteger(searchEventId) || searchEventId < 1) return null;
+  const event = db.prepare(`SELECT id, query, shown_video_ids_json, source_candidate_count
+    FROM search_events WHERE id = ? AND household_id = ? AND child_profile_id = ?`)
+    .get(searchEventId, householdId, childProfileId);
+  if (!event) return null;
+  let videoIds = [];
+  try {
+    const storedIds = JSON.parse(event.shown_video_ids_json);
+    if (Array.isArray(storedIds)) {
+      videoIds = [...new Set(storedIds.filter((id) => Number.isSafeInteger(id) && id > 0))].slice(0, 3);
+    }
+  } catch (_) {
+    // A damaged legacy result list must not turn a read into a server error.
+  }
+  const select = db.prepare(`${MODERATION_CANDIDATE_SELECT} WHERE videos.id = ?`);
+  const candidates = videoIds.map((id) => select.get(id)).filter(Boolean);
+  const policy = getChildPolicy({ householdId, childProfileId });
+  const { results } = moderationService.moderateCandidatesWithDiagnostics({
+    householdId, childProfileId, candidates, policy, limit: policy.maxResults, persist: false,
+  });
+  return { query: event.query, searchEventId: event.id,
+    candidatesConsidered: event.source_candidate_count, results };
 }
 
-function recordClickedVideo({ searchEventId, householdId, videoId }) {
-  return db
-    .prepare(
-      `UPDATE search_events
-       SET clicked_video_id = ?
-       WHERE id = ? AND household_id = ?`,
-    )
-    .run(videoId, searchEventId, householdId).changes;
+function markNotWhatIMeant({ searchEventId, householdId, childProfileId }) {
+  if (!Number.isSafeInteger(searchEventId) || searchEventId < 1) return 0;
+  return db.prepare(`UPDATE search_events SET not_what_i_meant = 1
+    WHERE id = ? AND household_id = ? AND child_profile_id = ?`)
+    .run(searchEventId, householdId, childProfileId).changes;
 }
 
-module.exports = {
-  markNotWhatIMeant,
-  recordClickedVideo,
-  search,
-};
+function recordClickedVideo({ searchEventId, householdId, childProfileId, videoId }) {
+  if (!Number.isSafeInteger(searchEventId) || searchEventId < 1) return 0;
+  return db.prepare(`UPDATE search_events SET clicked_video_id = ?
+    WHERE id = ? AND household_id = ? AND child_profile_id = ?
+      AND EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(search_events.shown_video_ids_json)
+        THEN search_events.shown_video_ids_json ELSE '[]' END) WHERE value = ?)`)
+    .run(videoId, searchEventId, householdId, childProfileId, videoId).changes;
+}
+
+module.exports = { getSavedSearch, markNotWhatIMeant, recordClickedVideo, search };
