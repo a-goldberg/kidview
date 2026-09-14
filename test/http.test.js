@@ -95,6 +95,35 @@ test('permits missing source headers in local development', async () => {
     }),
   });
   assert.equal(missingEvidence.status, 302);
+
+  const opaqueOrigin = await fetch(`${baseUrl}/auth/login`, {
+    method: 'POST',
+    redirect: 'manual',
+    headers: {
+      origin: 'null',
+      'content-type': 'application/x-www-form-urlencoded',
+    },
+    body: new URLSearchParams({
+      email: 'parent@example.com',
+      password: 'password123',
+    }),
+  });
+  assert.equal(opaqueOrigin.status, 302);
+
+  const opaqueCrossSite = await fetch(`${baseUrl}/auth/login`, {
+    method: 'POST',
+    redirect: 'manual',
+    headers: {
+      origin: 'null',
+      'sec-fetch-site': 'cross-site',
+      'content-type': 'application/x-www-form-urlencoded',
+    },
+    body: new URLSearchParams({
+      email: 'parent@example.com',
+      password: 'password123',
+    }),
+  });
+  assert.equal(opaqueCrossSite.status, 403);
 });
 
 test('rejects explicit cross-origin browser evidence', async () => {
@@ -203,6 +232,21 @@ test('production proxy configuration produces secure session cookies', async () 
       }),
     });
     assert.equal(missingEvidence.status, 403);
+
+    const opaqueOrigin = await fetch(`${productionUrl}/auth/login`, {
+      method: 'POST',
+      redirect: 'manual',
+      headers: {
+        origin: 'null',
+        'x-forwarded-proto': 'https',
+        'content-type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        email: 'parent@example.com',
+        password: 'password123',
+      }),
+    });
+    assert.equal(opaqueOrigin.status, 403);
 
     const response = await fetch(`${productionUrl}/auth/login`, {
       method: 'POST',
