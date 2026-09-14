@@ -100,10 +100,13 @@ const SEARCH_SUGGESTIONS_LIST = [
   "bear grylls poop water",
   "how squishies are made",
   "yummy salad recipe",
-  "best popcorn receipt",
+  "best popcorn recipe",
   "middle school teacher pranks",
   "exercise for kids",
   "softball pitching tutorial",
+  "how to juggle a soccer ball",
+  "how to play hacky sack",
+  "how to disappear completely",
 ]
 
 function getSearchSuggestions() {
@@ -113,7 +116,9 @@ function getSearchSuggestions() {
 }
 
 function resultsUrl(query, searchEventId) {
-  return searchEventId ? `/child/results?searchEventId=${searchEventId}` : `/child/search?q=${encodeURIComponent(query)}`
+  return searchEventId
+    ? `/child/results?searchEventId=${searchEventId}`
+    : `/child/search?q=${encodeURIComponent(query)}`
 }
 
 function requireParentForProfileSelection(req, res, next) {
@@ -226,13 +231,17 @@ router.post("/search", requireActiveChild, async (req, res, next) => {
 
     if (!searchResponse.searchEventId) return res.redirect(303, "/child/search")
     return res.redirect(303, resultsUrl(query, searchResponse.searchEventId))
-
   } catch (error) {
     if (error instanceof RangeError) {
       return res.status(400).render("child/results", {
-        title: "KidView Results", childProfile, query, searchEventId: null,
-        candidatesConsidered: 0, sourceError: error.message,
-        suggestions: getSearchSuggestions(), results: [],
+        title: "KidView Results",
+        childProfile,
+        query,
+        searchEventId: null,
+        candidatesConsidered: 0,
+        sourceError: error.message,
+        suggestions: getSearchSuggestions(),
+        results: [],
       })
     }
     if (error && error.userMessage) {
@@ -258,15 +267,22 @@ router.post("/search", requireActiveChild, async (req, res, next) => {
 router.get("/results", requireActiveChild, (req, res) => {
   const childProfile = req.activeChildProfile
   if (!req.query.searchEventId) {
-    return res.redirect(`/child/search?q=${encodeURIComponent(String(req.query.q || ""))}`)
+    return res.redirect(
+      `/child/search?q=${encodeURIComponent(String(req.query.q || ""))}`,
+    )
   }
   const saved = getSavedSearch({
     searchEventId: Number(req.query.searchEventId),
-    householdId: childProfile.householdId, childProfileId: childProfile.id,
+    householdId: childProfile.householdId,
+    childProfileId: childProfile.id,
   })
-  if (!saved) return res.status(404).render("not-found", { title: "Search not found" })
+  if (!saved)
+    return res.status(404).render("not-found", { title: "Search not found" })
   return res.render("child/results", {
-    title: "KidView Results", childProfile, ...saved, sourceError: null,
+    title: "KidView Results",
+    childProfile,
+    ...saved,
+    sourceError: null,
     suggestions: getSearchSuggestions(),
     results: saved.results.map((result) => ({
       ...result,
@@ -290,17 +306,21 @@ router.get("/videos/:videoId", requireActiveChild, (req, res) => {
     return res.status(404).render("child/video-unavailable", {
       title: "Video unavailable",
       childProfile,
-      resultsUrl: query || searchEventId ? resultsUrl(query, searchEventId) : null,
+      resultsUrl:
+        query || searchEventId ? resultsUrl(query, searchEventId) : null,
     })
   }
-
 
   return res.render("child/video", {
     title: video.title,
     childProfile,
     video,
-    searchEventId: Number.isSafeInteger(searchEventId) && searchEventId > 0 ? searchEventId : null,
-    resultsUrl: query || searchEventId ? resultsUrl(query, searchEventId) : null,
+    searchEventId:
+      Number.isSafeInteger(searchEventId) && searchEventId > 0
+        ? searchEventId
+        : null,
+    resultsUrl:
+      query || searchEventId ? resultsUrl(query, searchEventId) : null,
   })
 })
 
@@ -377,7 +397,8 @@ router.post(
 
     recordClickedVideo({
       searchEventId: Number(req.body && req.body.searchEventId),
-      householdId: childProfile.householdId, childProfileId: childProfile.id,
+      householdId: childProfile.householdId,
+      childProfileId: childProfile.id,
       videoId: video.videoId,
     })
 
