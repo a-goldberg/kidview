@@ -261,6 +261,14 @@ function insertStoredModerationReview(videoId, decision, confidenceScore = 0.8) 
       primary_category = excluded.primary_category,
       parent_explanation = excluded.parent_explanation`,
   ).run(household().id, videoId, decision, decision, confidenceScore);
+  // This fixture represents a current cached result, not an unversioned legacy row.
+  const { MODERATION_CANDIDATE_SELECT } = require('../app/services/moderationCandidateService');
+  const { MODERATION_CACHE_VERSION, moderationInputFingerprint } = require('../app/services/moderationScoringService');
+  const candidate = db.prepare(`${MODERATION_CANDIDATE_SELECT} WHERE videos.id = ?`).get(videoId);
+  db.prepare(`UPDATE moderation_reviews SET cache_version = ?, input_fingerprint = ?
+    WHERE household_id = ? AND video_id = ?`)
+    .run(MODERATION_CACHE_VERSION, moderationInputFingerprint(candidate), household().id, videoId);
+
 }
 
 test("policy configuration defaults usage limits to unlimited", () => {

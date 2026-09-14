@@ -3,17 +3,53 @@ const { remoderateChannelVideos } = require('./moderationService');
 
 const VIDEO_DECISIONS = new Set(['allow', 'allow_limited', 'review_required', 'block']);
 const CHANNEL_DECISIONS = new Set(['approved', 'review_first', 'blocked']);
+const MAX_REASON_LENGTH = 500;
 
-function normalizeVideoDecision(value) {
-  return VIDEO_DECISIONS.has(value) ? value : 'review_required';
+function requirePositiveInteger(value, fieldName) {
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new RangeError(`${fieldName} must be a positive integer.`);
+  }
+
+  return value;
 }
 
-function normalizeChannelDecision(value) {
-  return CHANNEL_DECISIONS.has(value) ? value : 'review_first';
+function requireDecision(value, supported, fieldName) {
+  if (!supported.has(value)) {
+    throw new RangeError(`${fieldName} is not supported.`);
+  }
+
+  return value;
+}
+
+function normalizeReason(reason) {
+  const normalized = String(reason || '').trim();
+
+  if (normalized.length > MAX_REASON_LENGTH) {
+    throw new RangeError(`reason must be ${MAX_REASON_LENGTH} characters or fewer.`);
+  }
+
+  return normalized || null;
+}
+
+function validateParentHousehold(householdId, parentUserId) {
+  requirePositiveInteger(householdId, 'householdId');
+  requirePositiveInteger(parentUserId, 'parentUserId');
+
+  const parent = db.prepare(
+    'SELECT id FROM parent_users WHERE id = ? AND household_id = ?'
+  ).get(parentUserId, householdId);
+
+  if (!parent) {
+    throw new RangeError('Parent user must belong to the selected household.');
+  }
 }
 
 function videoDecisionToReviewItemStatus(decision) {
-  return decision === 'block' ? 'blocked' : 'approved';
+  if (decision === 'block') {
+    return 'blocked';
+  }
+
+  return decision === 'review_required' ? 'dismissed' : 'approved';
 }
 
 function resolvePendingReviewItem({ householdId, videoId, parentUserId, status, reasonCode }) {
@@ -32,8 +68,14 @@ function resolvePendingReviewItem({ householdId, videoId, parentUserId, status, 
 }
 
 function upsertVideoDecision({ householdId, videoId, parentUserId, decision, reason }) {
-  const normalizedDecision = normalizeVideoDecision(decision);
-  const parentReason = String(reason || '').trim() || null;
+  validateParentHousehold(householdId, parentUserId);
+  requirePositiveInteger(videoId, 'videoId');
+  const normalizedDecision = requireDecision(decision, VIDEO_DECISIONS, 'video decision');
+  const parentReason = normalizeReason(reason);
+
+  if (!db.prepare('SELECT id FROM videos WHERE id = ?').get(videoId)) {
+    return null;
+  }
 
   db.transaction(() => {
     db.prepare(
@@ -65,14 +107,25 @@ function upsertVideoDecision({ householdId, videoId, parentUserId, decision, rea
       reasonCode: `parent_decision:${normalizedDecision}`
     });
   })();
+
+  return db.prepare(
+    'SELECT * FROM household_video_decisions WHERE household_id = ? AND video_id = ?'
+  ).get(householdId, videoId);
 }
 
 function upsertChannelDecision({ householdId, channelId, parentUserId, decision, reason }) {
-  const normalizedDecision = normalizeChannelDecision(decision);
-  const parentReason = String(reason || '').trim() || null;
+  validateParentHousehold(householdId, parentUserId);
+  requirePositiveInteger(channelId, 'channelId');
+  const normalizedDecision = requireDecision(decision, CHANNEL_DECISIONS, 'channel decision');
+  const parentReason = normalizeReason(reason);
 
-  db.prepare(
-    `INSERT INTO household_channel_decisions
+  if (!db.prepare('SELECT id FROM channels WHERE id = ?').get(channelId)) {
+    return null;
+  }
+
+  return db.transaction(() => {
+    db.prepare(
+      `INSERT INTO household_channel_decisions
       (household_id, channel_id, decision, parent_facing_reason, decided_by_parent_user_id)
      VALUES (?, ?, ?, ?, ?)
      ON CONFLICT(household_id, channel_id) DO UPDATE SET
@@ -80,13 +133,20 @@ function upsertChannelDecision({ householdId, channelId, parentUserId, decision,
       parent_facing_reason = excluded.parent_facing_reason,
       decided_by_parent_user_id = excluded.decided_by_parent_user_id,
       updated_at = CURRENT_TIMESTAMP`
-  ).run(householdId, channelId, normalizedDecision, parentReason, parentUserId);
+    ).run(householdId, channelId, normalizedDecision, parentReason, parentUserId);
 
-  return remoderateChannelVideos({ householdId, channelId });
+    return remoderateChannelVideos({ householdId, channelId });
+  })();
 }
 
 function bulkUpsertVideoDecisions({ householdId, parentUserId, videoIds, decision, reason }) {
-  const ids = videoIds.map(Number).filter(Boolean);
+  validateParentHousehold(householdId, parentUserId);
+  requireDecision(decision, VIDEO_DECISIONS, 'video decision');
+  normalizeReason(reason);
+  if (!Array.isArray(videoIds)) {
+    throw new RangeError('videoIds must be an array.');
+  }
+  const ids = [...new Set(videoIds.map((id) => requirePositiveInteger(id, 'videoId')))];
 
   db.transaction(() => {
     ids.forEach((videoId) => {
@@ -104,7 +164,11 @@ function bulkUpsertVideoDecisions({ householdId, parentUserId, videoIds, decisio
 }
 
 function clearReviewVideos({ householdId, parentUserId, videoIds }) {
-  const ids = videoIds.map(Number).filter(Boolean);
+  validateParentHousehold(householdId, parentUserId);
+  if (!Array.isArray(videoIds)) {
+    throw new RangeError('videoIds must be an array.');
+  }
+  const ids = [...new Set(videoIds.map((id) => requirePositiveInteger(id, 'videoId')))];
 
   if (!ids.length) {
     return 0;
@@ -127,11 +191,8 @@ function clearReviewVideos({ householdId, parentUserId, videoIds }) {
 }
 
 function ignoreReviewVideo({ householdId, parentUserId, videoId }) {
-  const id = Number(videoId);
-
-  if (!id) {
-    return 0;
-  }
+  validateParentHousehold(householdId, parentUserId);
+  const id = requirePositiveInteger(videoId, 'videoId');
 
   // Ignore is queue-only: it removes the current pending item without creating
   // a durable allow/block/review decision for future searches.
@@ -150,7 +211,11 @@ function ignoreReviewVideo({ householdId, parentUserId, videoId }) {
 }
 
 function clearReviewChannels({ householdId, parentUserId, channelIds }) {
-  const ids = channelIds.map(Number).filter(Boolean);
+  validateParentHousehold(householdId, parentUserId);
+  if (!Array.isArray(channelIds)) {
+    throw new RangeError('channelIds must be an array.');
+  }
+  const ids = [...new Set(channelIds.map((id) => requirePositiveInteger(id, 'channelId')))];
 
   if (!ids.length) {
     return {

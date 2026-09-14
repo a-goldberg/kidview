@@ -2,7 +2,7 @@
 
 KidView has two complementary testing layers:
 
-- **Automated regression tests** use Node's built-in `node:test` runner and a disposable SQLite database.
+- **Automated service, migration, configuration, and HTTP tests** use Node's built-in `node:test` runner and disposable SQLite databases.
 - **Manual fixture checks** give a parent-readable matrix for spot-checking behavior in the browser or with local scripts.
 
 The goal is not to test every line of code. The goal is to protect the household safety rules, parent override behavior, review queue rules, and search audit trail from accidental regressions.
@@ -81,14 +81,24 @@ After running the app locally, these searches should stay useful for parent-faci
 ## What These Tests Do Not Cover Yet
 
 - Full browser flows and visual regressions.
-- Parent login/session behavior.
-- Cross-household access-control probes.
 - Real YouTube API responses.
 - Future LLM/contextual moderation.
-- Enforcement of configured daily search and watch limits.
 
 The parent Profiles & Policies page also has a manual responsive check: confirm collapsed summaries, expanded forms, conditional confidence input, affected-child copy, keyboard focus, save feedback, and single-column mobile layout.
 
 The child-profile handoff has a manual browser check: begin without an active child selection, confirm search asks for parent setup without exposing profile names, log in, choose a household child, and confirm KidView signs the parent out before showing child search. Confirm the selected name appears throughout the child flow, the profile's result cap controls both results and explanatory copy, and **Switch profile** requires parent authentication again.
 
 Those are good candidates for later test layers. For now, keep this suite fast, local, and boring enough to run before most changes.
+
+
+## Cleanup regression coverage
+
+`npm test` runs all suites.  Each database-backed suite uses its own temporary SQLite file and removes it afterward.
+
+- `config.test.js`: production secrets, canonical HTTPS origin, and explicit proxy trust.
+- `http.test.js`: login and parent session access, origin checks, cross-household profile activation, secure cookies through a simulated HTTPS proxy, child handoff, saved results, and decision error responses.
+- `moderation-cleanup.test.js`: shared candidate metadata and cache invalidation for changed inputs or rules versions.
+- `data-cleanup.test.js`: validated decision writes, channel-transaction rollback, truthful review resolution, SQL history aggregation, and legacy-schema migration.
+- `search-cleanup.test.js`: read-only saved results, current policy rechecks, child-scoped activity, audit rollback, bounded pagination, malformed provider responses, and query limits.
+
+For manual validation, submit a search, refresh the results, open a video, and return to results.  Only the original search should consume search allowance.  Recheck a parent block against an already-open result page.  Check both typed searches and suggestion buttons.  The real YouTube player, browser layout, and deployed HTTPS proxy still require a browser smoke check.

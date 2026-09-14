@@ -1,5 +1,6 @@
 const express = require("express")
 const {
+  getSavedSearch,
   markNotWhatIMeant,
   recordClickedVideo,
   search,
@@ -18,6 +19,15 @@ const {
 } = require("../services/childProfileSessionService")
 
 const router = express.Router()
+// Express runs param checks before route handlers, including playback routes.
+for (const parameter of ["videoId", "childProfileId", "searchEventId"]) {
+  router.param(parameter, (req, res, next, value) => {
+    if (!/^[1-9]\d*$/.test(value) || !Number.isSafeInteger(Number(value))) {
+      return res.status(404).render("not-found", { title: "Not found" })
+    }
+    next()
+  })
+}
 const SEARCH_SUGGESTIONS_LIST = [
   "science experiments",
   "otters",
@@ -90,10 +100,13 @@ const SEARCH_SUGGESTIONS_LIST = [
   "bear grylls poop water",
   "how squishies are made",
   "yummy salad recipe",
-  "best popcorn receipt",
+  "best popcorn recipe",
   "middle school teacher pranks",
   "exercise for kids",
   "softball pitching tutorial",
+  "how to juggle a soccer ball",
+  "how to play hacky sack",
+  "how to disappear completely",
 ]
 
 function getSearchSuggestions() {
@@ -102,8 +115,10 @@ function getSearchSuggestions() {
     .slice(0, 3)
 }
 
-function resultsUrl(query) {
-  return `/child/results?q=${encodeURIComponent(query)}`
+function resultsUrl(query, searchEventId) {
+  return searchEventId
+    ? `/child/results?searchEventId=${searchEventId}`
+    : `/child/search?q=${encodeURIComponent(query)}`
 }
 
 function requireParentForProfileSelection(req, res, next) {
@@ -187,9 +202,9 @@ router.get("/search", requireActiveChild, (req, res) => {
   })
 })
 
-router.get("/results", requireActiveChild, async (req, res, next) => {
+router.post("/search", requireActiveChild, async (req, res, next) => {
   const childProfile = req.activeChildProfile
-  const query = String(req.query.q || "").trim()
+  const query = String(req.body.q || "").trim()
 
   try {
     const searchResponse = query
@@ -214,22 +229,21 @@ router.get("/results", requireActiveChild, async (req, res, next) => {
       })
     }
 
-    res.render("child/results", {
-      title: "KidView Results",
-      childProfile,
-      query,
-      searchEventId: searchResponse.searchEventId,
-      candidatesConsidered: searchResponse.candidatesConsidered,
-      sourceError: null,
-      suggestions: getSearchSuggestions(),
-      results: searchResponse.results.map((result) => ({
-        ...result,
-        watchUrl: `${result.watchUrl}?q=${encodeURIComponent(query)}&searchEventId=${encodeURIComponent(
-          searchResponse.searchEventId || "",
-        )}`,
-      })),
-    })
+    if (!searchResponse.searchEventId) return res.redirect(303, "/child/search")
+    return res.redirect(303, resultsUrl(query, searchResponse.searchEventId))
   } catch (error) {
+    if (error instanceof RangeError) {
+      return res.status(400).render("child/results", {
+        title: "KidView Results",
+        childProfile,
+        query,
+        searchEventId: null,
+        candidatesConsidered: 0,
+        sourceError: error.message,
+        suggestions: getSearchSuggestions(),
+        results: [],
+      })
+    }
     if (error && error.userMessage) {
       console.error("Child search source error:", error)
 
@@ -249,6 +263,34 @@ router.get("/results", requireActiveChild, async (req, res, next) => {
   }
 })
 
+// Legacy query links open the search form; only an explicit POST starts a search.
+router.get("/results", requireActiveChild, (req, res) => {
+  const childProfile = req.activeChildProfile
+  if (!req.query.searchEventId) {
+    return res.redirect(
+      `/child/search?q=${encodeURIComponent(String(req.query.q || ""))}`,
+    )
+  }
+  const saved = getSavedSearch({
+    searchEventId: Number(req.query.searchEventId),
+    householdId: childProfile.householdId,
+    childProfileId: childProfile.id,
+  })
+  if (!saved)
+    return res.status(404).render("not-found", { title: "Search not found" })
+  return res.render("child/results", {
+    title: "KidView Results",
+    childProfile,
+    ...saved,
+    sourceError: null,
+    suggestions: getSearchSuggestions(),
+    results: saved.results.map((result) => ({
+      ...result,
+      watchUrl: `${result.watchUrl}?q=${encodeURIComponent(saved.query)}&searchEventId=${saved.searchEventId}`,
+    })),
+  })
+})
+
 router.get("/videos/:videoId", requireActiveChild, (req, res) => {
   const childProfile = req.activeChildProfile
   const query = String(req.query.q || "").trim()
@@ -264,15 +306,8 @@ router.get("/videos/:videoId", requireActiveChild, (req, res) => {
     return res.status(404).render("child/video-unavailable", {
       title: "Video unavailable",
       childProfile,
-      resultsUrl: query ? resultsUrl(query) : null,
-    })
-  }
-
-  if (searchEventId && childProfile) {
-    recordClickedVideo({
-      searchEventId,
-      householdId: childProfile.householdId,
-      videoId,
+      resultsUrl:
+        query || searchEventId ? resultsUrl(query, searchEventId) : null,
     })
   }
 
@@ -280,7 +315,12 @@ router.get("/videos/:videoId", requireActiveChild, (req, res) => {
     title: video.title,
     childProfile,
     video,
-    resultsUrl: query ? resultsUrl(query) : null,
+    searchEventId:
+      Number.isSafeInteger(searchEventId) && searchEventId > 0
+        ? searchEventId
+        : null,
+    resultsUrl:
+      query || searchEventId ? resultsUrl(query, searchEventId) : null,
   })
 })
 
@@ -295,6 +335,7 @@ router.post(
       markNotWhatIMeant({
         searchEventId: Number(req.params.searchEventId),
         householdId: childProfile.householdId,
+        childProfileId: childProfile.id,
       })
     }
 
@@ -353,6 +394,13 @@ router.post(
         },
       )
     }
+
+    recordClickedVideo({
+      searchEventId: Number(req.body && req.body.searchEventId),
+      householdId: childProfile.householdId,
+      childProfileId: childProfile.id,
+      videoId: video.videoId,
+    })
 
     return res.json({
       ok: true,

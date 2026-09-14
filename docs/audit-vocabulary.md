@@ -31,7 +31,7 @@ Parent-facing EJS views should display these values through `app/services/displa
 | `moderation_source` | `hard_filter` | Blocked by a format guardrail or a household blocked-channel decision. An exact video decision may override the channel decision, but not a format guardrail. |
 | `moderation_source` | `parent_video_decision` | A durable household video decision decided the outcome. |
 | `moderation_source` | `parent_channel_decision` | A durable household channel decision decided the outcome. |
-| `moderation_source` | `stored_moderation_review` | Existing moderation review data was reused. |
+| `moderation_source` | `stored_moderation_review` | Existing moderation data was reused after its rules version and input fingerprint matched. |
 | `moderation_source` | `rule_based` | Current rule-based scoring decided the outcome. |
 | `parent_decision_source` | `video` | A household video decision affected the result. |
 | `parent_decision_source` | `channel` | A household channel decision affected the result. |
@@ -239,7 +239,7 @@ These labels are stored on `videos.labels_json` and can appear in child-safe car
 | `policy_profiles.max_results` | Child-visible result cap for children assigned to the profile. Valid values are 1 through 3. |
 | `child_profiles.allow_limited_policy` | Controls visibility and review routing for `allow_limited` candidates. |
 | `child_profiles.allow_limited_min_confidence` | Confidence threshold used by `limited_frequency`. |
-| `child_profiles.daily_search_limit` | Future daily search limit. `NULL` means unlimited; not enforced in this milestone. |
-| `child_profiles.daily_video_watch_limit` | Future daily video watch limit. `NULL` means unlimited; not enforced in this milestone. |
+| `child_profiles.daily_search_limit` | Daily search limit, enforced when a search is admitted. `NULL` means unlimited. |
+| `child_profiles.daily_video_watch_limit` | Daily distinct-video start limit, enforced before playback admission. `NULL` means unlimited. |
 
-The initial schema fields `policy_profiles.allow_shorts` and `policy_profiles.allow_livestreams` are inactive scaffolding. They are not read by the policy service and should not be exposed as normal parent controls. Shorts and live/upcoming streams remain format guardrails.
+Migration 013 removes the inactive `policy_profiles.allow_shorts` and `policy_profiles.allow_livestreams` fields.  Shorts and live/upcoming streams remain format guardrails.

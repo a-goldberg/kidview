@@ -1,5 +1,13 @@
 const db = require('../db/database');
 
+const REVIEW_QUEUE_ELIGIBILITY_SQL = `
+  household_video_decisions.id IS NULL
+  AND (household_channel_decisions.decision IS NULL OR household_channel_decisions.decision != 'blocked')
+  AND videos.is_short = 0
+  AND videos.live_status NOT IN ('live', 'upcoming')
+  AND COALESCE(moderation_reviews.decision, moderation_reviews.status, household_review_items.reason_code)
+    IN ('allow_limited', 'review', 'unknown')`;
+
 function parseLabels(labelsJson) {
   try {
     const labels = JSON.parse(labelsJson || '[]');
@@ -56,11 +64,7 @@ function getParentDashboard(householdId) {
         AND household_channel_decisions.channel_id = videos.channel_id
        WHERE household_review_items.household_id = ?
         AND household_review_items.status = 'pending'
-        AND household_video_decisions.id IS NULL
-        AND (household_channel_decisions.decision IS NULL OR household_channel_decisions.decision != 'blocked')
-        AND videos.is_short = 0
-        AND videos.live_status NOT IN ('live', 'upcoming')
-        AND COALESCE(moderation_reviews.decision, moderation_reviews.status, household_review_items.reason_code) IN ('allow_limited', 'review', 'unknown')`
+        AND ${REVIEW_QUEUE_ELIGIBILITY_SQL}`
     )
     .get(householdId).count;
 
@@ -142,11 +146,7 @@ function getReviewQueueWithFilters(householdId, filters = {}) {
        LEFT JOIN household_channel_decisions
         ON household_channel_decisions.channel_id = videos.channel_id
         AND household_channel_decisions.household_id = ?
-       WHERE household_video_decisions.id IS NULL
-        AND (household_channel_decisions.decision IS NULL OR household_channel_decisions.decision != 'blocked')
-        AND videos.is_short = 0
-        AND videos.live_status NOT IN ('live', 'upcoming')
-        AND COALESCE(moderation_reviews.decision, moderation_reviews.status, household_review_items.reason_code) IN ('allow_limited', 'review', 'unknown')
+       WHERE ${REVIEW_QUEUE_ELIGIBILITY_SQL}
        ORDER BY
         videos.is_short ASC,
         CASE videos.live_status
@@ -242,11 +242,7 @@ function getReviewQueueWithFilters(householdId, filters = {}) {
        LEFT JOIN moderation_reviews
         ON moderation_reviews.video_id = videos.id
         AND moderation_reviews.household_id = ?
-       WHERE household_video_decisions.id IS NULL
-        AND (household_channel_decisions.decision IS NULL OR household_channel_decisions.decision != 'blocked')
-        AND videos.is_short = 0
-        AND videos.live_status NOT IN ('live', 'upcoming')
-        AND COALESCE(moderation_reviews.decision, moderation_reviews.status, household_review_items.reason_code) IN ('allow_limited', 'review', 'unknown')
+       WHERE ${REVIEW_QUEUE_ELIGIBILITY_SQL}
        GROUP BY channels.id
        ORDER BY channels.title`
     )
@@ -333,17 +329,25 @@ function getShownVideoRequestCounts(householdId) {
   const counts = new Map();
   const rows = db
     .prepare(
-      `SELECT shown_video_ids_json
+      `SELECT
+        CAST(json_each.value AS INTEGER) AS video_id,
+        COUNT(*) AS request_count
        FROM search_events
-       WHERE household_id = ?`
+       JOIN json_each(
+        CASE WHEN json_valid(search_events.shown_video_ids_json)
+          THEN search_events.shown_video_ids_json
+          ELSE '[]'
+        END
+       )
+       WHERE search_events.household_id = ?
+        AND json_each.type IN ('integer', 'real', 'text')
+        AND CAST(json_each.value AS INTEGER) > 0
+       GROUP BY CAST(json_each.value AS INTEGER)`
     )
     .all(householdId);
 
   rows.forEach((row) => {
-    parseLabels(row.shown_video_ids_json).forEach((videoId) => {
-      const id = Number(videoId);
-      counts.set(id, (counts.get(id) || 0) + 1);
-    });
+    counts.set(row.video_id, row.request_count);
   });
 
   return counts;

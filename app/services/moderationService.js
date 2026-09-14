@@ -4,6 +4,15 @@ const {
   getChildPolicy,
   shouldQueueForReview,
 } = require("./policyService")
+const { MODERATION_CANDIDATE_SELECT } = require("./moderationCandidateService")
+const {
+  MODERATION_CACHE_VERSION,
+  ageInDays,
+  liveStatusFor,
+  moderationInputFingerprint,
+  scoreCandidate,
+  viewsPerDay,
+} = require("./moderationScoringService")
 
 const ICON_PATHS = {
   animals: "/icons/animals2.png",
@@ -23,40 +32,6 @@ const ICON_PATHS = {
 
 const RULE_MODEL_NAME = "rule-based-v1"
 const RULE_PROMPT_VERSION = "rules-v1"
-
-const SEVERE_RISK_PATTERN =
-  /suicide|self[- ]?harm|p[0o]{1}rn|pr[o0]{1}n|pstars|prnstars|x{3,}|bbw|boot(y|ie)|butt(?!er)|\bass\b|\banal\b|brazzers|\btit(s|ties)?\b|\bsexx?(y|ual)?|nak[ei]d|boobies|\bdicks?\b|\brape(\b|s)|\bslut|gore|murder|kill|weapon|gun|knife|flamethrower|poison|toxin|skyscraper|rooftop/i
-const RISK_PATTERN =
-  /scary|secret|secrets|exposed|drama|breakup|rumor|prank|challenge|mystery box|unboxing|haul|shopping|spent \$|won't believe|do not try|dangerous|gaming|minecraft|roblox|fortnite|dark fantasy|pvp|boob|breasts|graphic/i
-const CLICKBAIT_PATTERN =
-  /!!!|😱|🔥|you won't believe|what happened next|watch until the end|shocking|insane/i
-const EDUCATIONAL_PATTERN =
-  /for kids|explained|how .* works|why .*|science|facts|tutorial|lesson|learn|beginner|history|math|fraction|biology|nature|paper airplane|behind the scenes/i
-const CHILD_INTENT_PATTERN =
-  /for kids|beginner|simple|easy|lesson|tutorial|facts/i
-const SAFE_CATEGORY_PATTERN =
-  /science|math|fraction|nature|animal|otter|rocket|paper airplane|animation|art|craft|behind the scenes|official|studio/i
-const OFFICIAL_CHANNEL_PATTERN =
-  /official|pbs|smithsonian|museum|national geographic|nasa|studio|pixar|science|academy|library|university|bbc|nasa/i
-const UNKNOWN_CREATOR_PATTERN =
-  /vlog|funzone|gamer|gaming|clips|squad|hyper|99|z$/i
-// YouTube categories are limited positive evidence, never standalone approval.
-const YOUTUBE_CATEGORY_SIGNALS = new Map([
-  ["Pets & Animals", { tag: "youtube-pets-and-animals", score: 8 }],
-  ["Education", { tag: "youtube-education", score: 8 }],
-  ["Howto & Style", { tag: "youtube-howto-and-style", score: 5 }],
-  ["Science & Technology", { tag: "youtube-science-and-technology", score: 5 }],
-  ["Autos & Vehicles", { tag: "youtube-autos-and-vehicles", score: 3 }],
-  ["Sports", { tag: "youtube-sports", score: 3 }],
-  ["Travel & Events", { tag: "youtube-travel", score: 1 }],
-  ["Documentary", { tag: "youtube-documentary", score: 4 }],
-  ["Family", { tag: "youtube-family", score: 4 }],
-])
-function liveStatusFor(candidate) {
-  return (
-    candidate.liveStatus || (candidate.isLivestream ? "completed_live" : "none")
-  )
-}
 
 function getDecisionMaps(householdId, candidates) {
   const videoIds = candidates.map((candidate) => candidate.videoId)
@@ -93,7 +68,9 @@ function getDecisionMaps(householdId, candidates) {
         content_tags_json,
         risk_tags_json,
         quality_tags_json,
-        child_explanation
+        child_explanation,
+        cache_version,
+        input_fingerprint
        FROM moderation_reviews
        WHERE household_id = ? AND video_id IN (${placeholders})`,
     )
@@ -133,47 +110,6 @@ function parseLabels(labelsJson) {
   }
 }
 
-function ageInDays(publishedAt, now = new Date()) {
-  const published = new Date(publishedAt)
-
-  if (!publishedAt || Number.isNaN(published.getTime())) {
-    return null
-  }
-
-  return Math.max(
-    0,
-    Math.floor((now.getTime() - published.getTime()) / (1000 * 60 * 60 * 24)),
-  )
-}
-
-function viewsPerDay(candidate) {
-  const days = ageInDays(candidate.publishedAt)
-
-  if (days === null) {
-    return null
-  }
-
-  return Number(candidate.viewCount || 0) / Math.max(days, 1)
-}
-
-function tagIf(condition, tags, tag) {
-  if (condition) {
-    tags.push(tag)
-  }
-}
-
-function confidenceFromScore(score) {
-  return Math.max(0.05, Math.min(0.99, score / 100))
-}
-
-function hasApprovedChannel(channelDecision) {
-  return channelDecision && channelDecision.decision === "approved"
-}
-
-function hasUnknownChannel(channelDecision) {
-  return !channelDecision
-}
-
 function formatHardFilter(candidate) {
   if (candidate.isShort && FORMAT_GUARDRAILS.shorts === "block") {
     return {
@@ -198,225 +134,6 @@ function formatHardFilter(candidate) {
   }
 
   return null
-}
-
-function scoreCandidate(candidate, channelDecision) {
-  let score = 50
-  const text = [candidate.title, candidate.description, candidate.channelTitle]
-    .filter(Boolean)
-    .join(" ")
-  const title = candidate.title || ""
-  const contentTags = []
-  const riskTags = []
-  const qualityTags = []
-  const viewCount = Number(candidate.viewCount || 0)
-  const unknownChannel = hasUnknownChannel(channelDecision)
-  const approvedChannel = hasApprovedChannel(channelDecision)
-  const liveStatus = liveStatusFor(candidate)
-  const vpd = viewsPerDay(candidate)
-  const youtubeCategorySignal = YOUTUBE_CATEGORY_SIGNALS.get(
-    String(candidate.youtubeCategoryTitle || ""),
-  )
-
-  tagIf(SAFE_CATEGORY_PATTERN.test(text), contentTags, "safe-category")
-  tagIf(EDUCATIONAL_PATTERN.test(text), contentTags, "educational")
-  tagIf(
-    CHILD_INTENT_PATTERN.test(text),
-    contentTags,
-    "clear-child-friendly-intent",
-  )
-  tagIf(
-    OFFICIAL_CHANNEL_PATTERN.test(candidate.channelTitle || ""),
-    qualityTags,
-    "official-or-source-backed-channel",
-  )
-  tagIf(approvedChannel, qualityTags, "household-approved-channel")
-  tagIf(
-    candidate.durationSeconds >= 120 && candidate.durationSeconds <= 900,
-    qualityTags,
-    "reasonable-duration",
-  )
-  tagIf(viewCount >= 100000, qualityTags, "established-view-history")
-  tagIf(vpd !== null && vpd >= 500, qualityTags, "healthy-views-per-day")
-  tagIf(
-    Boolean(youtubeCategorySignal),
-    qualityTags,
-    youtubeCategorySignal && youtubeCategorySignal.tag,
-  )
-  tagIf(Boolean(candidate.madeForKids), qualityTags, "youtube-made-for-kids")
-
-  tagIf(RISK_PATTERN.test(text), riskTags, "risky-or-ambiguous-topic")
-  tagIf(SEVERE_RISK_PATTERN.test(text), riskTags, "severe-risk-flag")
-  tagIf(CLICKBAIT_PATTERN.test(title), riskTags, "clickbait-title")
-  tagIf(
-    UNKNOWN_CREATOR_PATTERN.test(candidate.channelTitle || ""),
-    riskTags,
-    "creator-style-channel",
-  )
-  tagIf(candidate.durationSeconds > 1800, riskTags, "very-long-video")
-  tagIf(liveStatus === "completed_live", riskTags, "completed-live-recording")
-  tagIf(!candidate.description, riskTags, "missing-description")
-  tagIf(!candidate.publishedAt, riskTags, "missing-published-date")
-  tagIf(
-    viewCount < 1000 && unknownChannel,
-    riskTags,
-    "very-low-view-unknown-channel",
-  )
-  tagIf(
-    viewCount < 10000 && unknownChannel,
-    riskTags,
-    "limited-view-unknown-channel",
-  )
-
-  if (contentTags.includes("safe-category")) score += 10
-  if (contentTags.includes("educational")) score += 12
-  if (contentTags.includes("clear-child-friendly-intent")) score += 8
-  if (qualityTags.includes("official-or-source-backed-channel")) score += 12
-  if (qualityTags.includes("household-approved-channel")) score += 20
-  if (qualityTags.includes("reasonable-duration")) score += 6
-  if (qualityTags.includes("healthy-views-per-day")) score += 4
-  if (youtubeCategorySignal) score += youtubeCategorySignal.score
-  if (qualityTags.includes("youtube-made-for-kids")) score += 6
-
-  if (viewCount >= 1000000) score += 10
-  else if (viewCount >= 100000) score += 6
-  else if (viewCount >= 10000) score += 2
-  else if (viewCount >= 1000 && unknownChannel) score -= 5
-  else if (viewCount < 1000 && unknownChannel) score -= 15
-  else if (viewCount < 1000) score -= 3
-
-  if (riskTags.includes("risky-or-ambiguous-topic")) score -= 18
-  if (riskTags.includes("severe-risk-flag")) score -= 40
-  if (riskTags.includes("clickbait-title")) score -= 20
-  if (riskTags.includes("creator-style-channel")) score -= 8
-  if (riskTags.includes("very-long-video")) score -= 8
-  if (riskTags.includes("completed-live-recording"))
-    score -= approvedChannel ? 4 : 12
-  if (riskTags.includes("missing-description")) score -= 8
-  if (riskTags.includes("missing-published-date")) score -= 6
-
-  let decision = "unknown"
-  let debugScore = {
-    title: candidate.title,
-    decision: decision,
-    score: score,
-    reasons: [],
-  }
-  if (riskTags.includes("severe-risk-flag")) {
-    decision = "block"
-    debugScore.reasons.push("Severe risk flag")
-  } else if (
-    approvedChannel &&
-    !riskTags.includes("clickbait-title") &&
-    !riskTags.includes("risky-or-ambiguous-topic") &&
-    (liveStatus !== "completed_live" || score >= 78)
-  ) {
-    decision = "allow"
-  } else if (
-    score >= 78 &&
-    (riskTags.length === 0 ||
-      (approvedChannel &&
-        liveStatus === "completed_live" &&
-        riskTags.length === 1 &&
-        riskTags.includes("completed-live-recording")))
-  ) {
-    decision = "allow"
-    debugScore.reasons.push("Benign live recording")
-  } else if (score >= 70 && !riskTags.includes("clickbait-title")) {
-    decision = "allow_limited"
-    debugScore.reasons.push("Clickbait title")
-  } else if (score >= 45) {
-    decision = "review"
-    debugScore.reasons.push("45 < score < 70")
-  }
-
-  if (
-    riskTags.includes("very-low-view-unknown-channel") &&
-    decision === "allow_limited"
-  ) {
-    decision = "review"
-    debugScore.reasons.push("Very low view count from unknown channel")
-  }
-
-  if (liveStatus === "completed_live" && decision === "allow_limited") {
-    decision = "review"
-    debugScore.reasons.push("Completed live recording")
-  }
-
-  const parentExplanationParts = []
-
-  if (decision === "allow") {
-    parentExplanationParts.push(
-      "Rule-based moderation found clear educational or source-backed signals.",
-    )
-  } else if (decision === "allow_limited") {
-    parentExplanationParts.push(
-      "Rule-based moderation found mostly safe signals, but parent review may still be useful.",
-    )
-  } else if (decision === "review") {
-    parentExplanationParts.push(
-      "Rule-based moderation found mixed or incomplete signals, so this was sent for review.",
-    )
-  } else if (decision === "block") {
-    parentExplanationParts.push(
-      "Rule-based moderation found a severe risk flag.",
-    )
-  } else {
-    parentExplanationParts.push(
-      "Rule-based moderation did not find enough context for an automated allow.",
-    )
-  }
-
-  if (riskTags.includes("limited-view-unknown-channel")) {
-    parentExplanationParts.push(
-      "This video has limited view history from an unknown channel.",
-    )
-  }
-
-  if (riskTags.includes("very-low-view-unknown-channel")) {
-    parentExplanationParts.push(
-      "Very low view count from an unknown channel increases review need.",
-    )
-  }
-
-  if (riskTags.includes("completed-live-recording")) {
-    parentExplanationParts.push(
-      "This is a completed livestream recording, so it needs stronger trusted-channel and quality signals before child display.",
-    )
-  }
-
-  if (vpd !== null) {
-    parentExplanationParts.push(`Views per day estimate: ${Math.round(vpd)}.`)
-  }
-
-  return {
-    decision,
-    confidenceScore: confidenceFromScore(score),
-    primaryCategory: candidate.primaryCategory || "General",
-    contentTags,
-    riskTags,
-    qualityTags,
-    childExplanation: childExplanationFor(candidate),
-    parentExplanation: parentExplanationParts.join(" "),
-    score,
-    debugScore,
-  }
-}
-
-function childExplanationFor(candidate) {
-  if (candidate.primaryCategory === "Animals") {
-    return "Enjoy a calm video about animals or nature."
-  }
-
-  if (candidate.primaryCategory === "Science") {
-    return "Let's learn some science together!"
-  }
-
-  if (candidate.primaryCategory === "Art") {
-    return "How about this video about making, building, or DIY?"
-  }
-  return ""
-  // return "A KidView-approved video.";
 }
 
 function decisionFromParentVideo(decision) {
@@ -455,10 +172,18 @@ function resultFromStoredReview(candidate, review) {
   }
 }
 
+function storedReviewMatchesCandidate(candidate, review) {
+  return (
+    review.cache_version === MODERATION_CACHE_VERSION &&
+    review.input_fingerprint === moderationInputFingerprint(candidate)
+  )
+}
+
 function writeModerationReview({
   householdId,
   candidate,
   result,
+  channelDecision = null,
   persist = true,
 }) {
   if (!persist) {
@@ -481,9 +206,11 @@ function writeModerationReview({
       parent_explanation,
       model_name,
       prompt_version,
-      transcript_used
+      transcript_used,
+      cache_version,
+      input_fingerprint
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
     ON CONFLICT(household_id, video_id) DO UPDATE SET
       status = excluded.status,
       decision = excluded.decision,
@@ -497,7 +224,9 @@ function writeModerationReview({
       parent_explanation = excluded.parent_explanation,
       model_name = excluded.model_name,
       prompt_version = excluded.prompt_version,
-      transcript_used = excluded.transcript_used`,
+      transcript_used = excluded.transcript_used,
+      cache_version = excluded.cache_version,
+      input_fingerprint = excluded.input_fingerprint`,
   ).run(
     householdId,
     candidate.videoId,
@@ -513,6 +242,8 @@ function writeModerationReview({
     result.parentExplanation,
     RULE_MODEL_NAME,
     RULE_PROMPT_VERSION,
+    MODERATION_CACHE_VERSION,
+    moderationInputFingerprint(candidate, channelDecision),
   )
 }
 
@@ -631,7 +362,13 @@ function resolveDecision({
       childExplanation: "",
       parentExplanation: hardBlocked.reason,
     }
-    writeModerationReview({ householdId, candidate, result, persist })
+    writeModerationReview({
+      householdId,
+      candidate,
+      result,
+      channelDecision,
+      persist,
+    })
     const reviewQueue = resolvePendingReviewItem({
       householdId,
       candidate,
@@ -703,7 +440,13 @@ function resolveDecision({
         channelDecision.parent_facing_reason ||
         "Blocked because this household blocked the channel.",
     }
-    writeModerationReview({ householdId, candidate, result, persist })
+    writeModerationReview({
+      householdId,
+      candidate,
+      result,
+      channelDecision,
+      persist,
+    })
     const reviewQueue = resolvePendingReviewItem({
       householdId,
       candidate,
@@ -732,7 +475,13 @@ function resolveDecision({
         channelDecision.parent_facing_reason ||
         "Household requires review before this channel appears.",
     }
-    writeModerationReview({ householdId, candidate, result, persist })
+    writeModerationReview({
+      householdId,
+      candidate,
+      result,
+      channelDecision,
+      persist,
+    })
     const reviewQueue = ensurePendingReviewItem({
       householdId,
       childProfileId,
@@ -750,7 +499,11 @@ function resolveDecision({
     }
   }
 
-  if (storedReview && !channelDecision) {
+  if (
+    storedReview &&
+    !channelDecision &&
+    storedReviewMatchesCandidate(candidate, storedReview)
+  ) {
     const result = resultFromStoredReview(candidate, storedReview)
     const reviewQueue = ensurePendingReviewItem({
       householdId,
@@ -769,7 +522,13 @@ function resolveDecision({
   }
 
   const automated = scoreCandidate(candidate, channelDecision)
-  writeModerationReview({ householdId, candidate, result: automated, persist })
+  writeModerationReview({
+    householdId,
+    candidate,
+    result: automated,
+    channelDecision,
+    persist,
+  })
   const reviewQueue = ensurePendingReviewItem({
     householdId,
     childProfileId,
@@ -1006,7 +765,7 @@ function selectChildVisibleEntries(
   return selected
 }
 
-function moderateCandidatesWithDiagnostics({
+function executeModeration({
   householdId,
   childProfileId,
   candidates,
@@ -1080,6 +839,15 @@ function moderateCandidatesWithDiagnostics({
   }
 }
 
+function moderateCandidatesWithDiagnostics(options) {
+  if (options.persist === false) {
+    return executeModeration(options)
+  }
+
+  // Review rows and their matching queue state describe one moderation result.
+  return db.transaction(() => executeModeration(options))()
+}
+
 function moderateCandidates({
   householdId,
   childProfileId,
@@ -1094,33 +862,9 @@ function moderateCandidates({
   }).results
 }
 
-function selectModerationCandidate() {
-  return `SELECT
-    videos.id AS videoId,
-    videos.external_id AS externalId,
-    videos.title,
-    videos.description,
-    videos.duration_seconds AS durationSeconds,
-    videos.primary_category AS primaryCategory,
-    videos.icon_key AS iconKey,
-    videos.labels_json AS labelsJson,
-    videos.confidence_score AS confidenceScore,
-    videos.child_explanation AS childExplanation,
-    videos.parent_explanation AS parentExplanation,
-    videos.is_short AS isShort,
-    videos.is_livestream AS isLivestream,
-    videos.live_status AS liveStatus,
-    videos.published_at AS publishedAt,
-    videos.view_count AS viewCount,
-    channels.id AS channelId,
-    channels.title AS channelTitle
-   FROM videos
-   JOIN channels ON channels.id = videos.channel_id`
-}
-
 function remoderateChannelVideos({ householdId, channelId }) {
   const candidates = db
-    .prepare(`${selectModerationCandidate()} WHERE channels.id = ?`)
+    .prepare(`${MODERATION_CANDIDATE_SELECT} WHERE channels.id = ?`)
     .all(channelId)
 
   moderateCandidatesWithDiagnostics({
@@ -1134,19 +878,20 @@ function remoderateChannelVideos({ householdId, channelId }) {
 
 function getChildSafeVideo({ householdId, childProfileId, videoId }) {
   const candidate = db
-    .prepare(`${selectModerationCandidate()} WHERE videos.id = ?`)
+    .prepare(`${MODERATION_CANDIDATE_SELECT} WHERE videos.id = ?`)
     .get(videoId)
 
   if (!candidate) {
     return null
   }
 
-  const [result] = moderateCandidates({
+  const [result] = moderateCandidatesWithDiagnostics({
     householdId,
     childProfileId,
     candidates: [candidate],
     limit: 1,
-  })
+    persist: false,
+  }).results
 
   return result || null
 }
