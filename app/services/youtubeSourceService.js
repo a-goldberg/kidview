@@ -153,6 +153,15 @@ function mapYouTubeVideo(video, categoryTitles) {
     transcriptSample: null,
     primaryCategoryHint: null,
     viewCount: Number(statistics.viewCount || 0),
+    // The comparison prototype can use the complete API metadata without
+    // changing the existing child-facing candidate fields or database schema.
+    youtubeMetadata: {
+      snippet: video.snippet,
+      contentDetails: video.contentDetails,
+      status: video.status,
+      liveStreamingDetails: video.liveStreamingDetails || null,
+      statistics,
+    },
   };
 }
 

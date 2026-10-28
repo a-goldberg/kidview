@@ -10,6 +10,7 @@ const db = require("./app/db/database");
 const authRoutes = require("./app/routes/auth");
 const childRoutes = require("./app/routes/child");
 const parentRoutes = require("./app/routes/parent");
+const modelComparisonRoutes = require("./model-comparison/routes");
 const requireSameOrigin = require("./app/middleware/requireSameOrigin");
 const displayLabels = require("./app/services/displayLabels");
 
@@ -102,6 +103,7 @@ function createApp(options = {}) {
   app.use("/auth", authRoutes);
   app.use("/child", childRoutes);
   app.use("/parent", parentRoutes);
+  app.use("/model-comparison", modelComparisonRoutes);
 
   app.use((req, res) => {
     res.status(404).render("not-found", {

@@ -1,0 +1,76 @@
+<%- include('../app/views/partials/head', { title }) %>
+<main class="comparison-page">
+  <header class="comparison-header">
+    <a href="/parent">← KidView parent dashboard</a>
+    <p class="eyebrow">KidView experiment</p>
+    <h1>Compare video assessments</h1>
+    <p>Search YouTube, choose a result, and see how three models assess it from metadata alone.</p>
+  </header>
+
+  <form class="comparison-search" method="post" action="/model-comparison/search">
+    <label for="query">YouTube search</label>
+    <div class="comparison-search-row">
+      <input id="query" name="q" type="search" maxlength="200" required value="<%= query %>" placeholder="Try: how do volcanoes form?">
+      <button type="submit">Find videos</button>
+    </div>
+  </form>
+
+  <% if (error) { %><p class="comparison-error" role="alert"><%= error %></p><% } %>
+
+  <% if (query) { %>
+    <section aria-labelledby="results-heading">
+      <div class="comparison-section-heading">
+        <h2 id="results-heading">Search results</h2>
+        <p>KidView's standard rules filtered these results.  This search isn't saved to history or moderation.</p>
+      </div>
+      <% if (!videos.length) { %>
+        <p>No eligible videos appeared within the search limit.  Try a different query.</p>
+      <% } else { %>
+        <form method="post" action="/model-comparison/compare">
+          <div class="comparison-videos">
+            <% videos.forEach((video) => { %>
+              <label class="comparison-video">
+                <input type="radio" name="videoId" value="<%= video.externalVideoId %>" required <%= selectedId === video.externalVideoId ? 'checked' : '' %>>
+                <span class="comparison-video-text"><strong><%= video.title %></strong><small><%= video.category %></small></span>
+              </label>
+            <% }) %>
+          </div>
+          <button type="submit">Compare selected video</button>
+        </form>
+      <% } %>
+    </section>
+  <% } %>
+
+  <% if (comparisons.length) { %>
+    <section aria-labelledby="comparison-heading">
+      <div class="comparison-section-heading">
+        <h2 id="comparison-heading">Model responses</h2>
+        <p>These are estimates from YouTube metadata, not a review of the video itself.  "Uncertain" means the metadata doesn't support a firm call.</p>
+      </div>
+      <div class="comparison-models">
+        <% comparisons.forEach((item) => { %>
+          <article class="comparison-model">
+            <h3><%= item.name %></h3>
+            <p class="comparison-model-id"><%= item.id %></p>
+            <% if (item.error) { %>
+              <p class="comparison-error">This model couldn't return an assessment: <%= item.error %></p>
+            <% } else { %>
+              <p><strong>Synopsis</strong><br><%= item.assessment.synopsis %></p>
+              <p><strong>Likely age range</strong><br><%= item.assessment.ageRange %></p>
+              <p><strong>For children 12 and younger</strong><br><span class="assessment-status <%= item.assessment.under13 %>"><%= item.assessment.under13.replace('_', ' ') %></span></p>
+              <p><strong>Why</strong><br><%= item.assessment.reason %></p>
+            <% } %>
+            <dl class="comparison-metrics">
+              <div><dt>Latency</dt><dd><%= (item.latencyMs / 1000).toFixed(2) %> s</dd></div>
+              <div><dt>Input tokens</dt><dd><%= item.promptTokens ?? '—' %></dd></div>
+              <div><dt>Output tokens</dt><dd><%= item.completionTokens ?? '—' %></dd></div>
+              <div><dt>Cost</dt><dd><%= item.cost == null ? '—' : '$' + item.cost.toFixed(6) %></dd></div>
+            </dl>
+          </article>
+        <% }) %>
+      </div>
+    </section>
+  <% } %>
+</main>
+<link rel="stylesheet" href="/model-comparison/style.css">
+<%- include('../app/views/partials/footer') %>

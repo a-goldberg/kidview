@@ -1,5 +1,11 @@
 # KidView
 
+## Model comparison experiment
+
+The separate parent-only prototype is at `/model-comparison`. It uses the configured YouTube Data API key even if the main app is running in mock mode. Add `OPENROUTER_API_KEY=your-key` to the root `.env` file, which Git ignores. Do not put the key in `model-comparison/`, source code, or `.env.example`. Restart the server after adding it.
+
+Each search uses KidView's YouTube source settings and rule-based filters, then keeps up to three results briefly in server memory. It does not create KidView search history, usage, or parent review entries. Each comparison makes three paid OpenRouter requests. See [`model-comparison/PLAN.md`](model-comparison/PLAN.md) for scope and limitations.
+
 KidView is a small Node.js, Express, and EJS web app for a household-controlled child video discovery gateway.
 
 The app uses plain server-rendered pages, SQLite, and small service modules for household policies, moderation, search, and playback usage.
