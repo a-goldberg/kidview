@@ -3,6 +3,7 @@ const express = require("express");
 const rateLimit = require("express-rate-limit");
 const { searchVideos } = require("./search");
 const { compareVideo } = require("./compare");
+const { scoreCandidate } = require("../app/services/moderationScoringService");
 
 const router = express.Router();
 const recentSearches = new Map();
@@ -28,8 +29,8 @@ function currentVideos(req) {
   return entry.videos;
 }
 
-function renderPage(res, { query = "", videos = [], selectedId = "", comparisons = [], error = "" } = {}) {
-  res.render(view, { title: "Model comparison", query, videos, selectedId, comparisons, error });
+function renderPage(res, { query = "", videos = [], selectedId = "", comparisons = [], baseline = null, preview = null, error = "" } = {}) {
+  res.render(view, { title: "Model comparison", query, videos, selectedId, comparisons, baseline, preview, error });
 }
 
 router.get("/", (req, res) => renderPage(res));
@@ -37,7 +38,7 @@ router.get("/", (req, res) => renderPage(res));
 router.post("/search", async (req, res, next) => {
   const query = typeof req.body.q === "string" ? req.body.q.trim() : "";
   if (!query || query.length > 200) {
-    return res.status(400).render(view, { title: "Model comparison", query, videos: [], selectedId: "", comparisons: [], error: "Enter a search of 1 to 200 characters." });
+    return res.status(400).render(view, { title: "Model comparison", query, videos: [], selectedId: "", comparisons: [], baseline: null, preview: null, error: "Enter a search of 1 to 200 characters." });
   }
   try {
     recentSearches.delete(req.sessionID);
@@ -64,7 +65,13 @@ router.post("/compare", async (req, res) => {
   if (!video) return renderPage(res, { query, videos, error: "Search again, then choose one of the three videos." });
   try {
     const comparisons = await compareVideo(video, process.env.OPENROUTER_API_KEY);
-    return renderPage(res, { query, videos, selectedId, comparisons });
+    // This is the same rule score used when selecting search results. It has no
+    // household overrides or database effects, which keeps the experiment isolated.
+    const baseline = scoreCandidate({ ...video, primaryCategory: video.category }, null);
+    const preview = /^[A-Za-z0-9_-]{11}$/.test(video.externalVideoId)
+      ? { title: video.title, embedUrl: `https://www.youtube-nocookie.com/embed/${video.externalVideoId}` }
+      : null;
+    return renderPage(res, { query, videos, selectedId, comparisons, baseline, preview });
   } catch (error) {
     return renderPage(res, { query, videos, selectedId, error: error.message });
   }

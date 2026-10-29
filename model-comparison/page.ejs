@@ -42,6 +42,19 @@
   <% } %>
 
   <% if (comparisons.length) { %>
+    <section class="comparison-baseline" aria-labelledby="baseline-heading">
+      <div>
+        <p class="comparison-kicker">KidView baseline</p>
+        <h2 id="baseline-heading">Default rule-based decision</h2>
+        <p class="comparison-baseline-note">This search only offers videos the default rules allow.  Household overrides and parent review aren't applied here.</p>
+      </div>
+      <div class="comparison-baseline-result">
+        <strong><%= displayLabel('finalDecision', baseline.decision, displayLocale) %></strong>
+        <span>Rule score: <%= baseline.score %> (not a probability)</span>
+        <% const signals = [...baseline.contentTags.map((tag) => displayLabel('contentTag', tag, displayLocale)), ...baseline.qualityTags.map((tag) => displayLabel('qualityTag', tag, displayLocale))]; %>
+        <% if (signals.length) { %><span>Signals: <%= signals.slice(0, 3).join(' · ') %></span><% } %>
+      </div>
+    </section>
     <section aria-labelledby="comparison-heading">
       <div class="comparison-section-heading">
         <h2 id="comparison-heading">Model responses</h2>
@@ -70,6 +83,17 @@
         <% }) %>
       </div>
     </section>
+    <% if (preview) { %>
+      <section aria-labelledby="preview-heading">
+        <div class="comparison-section-heading">
+          <h2 id="preview-heading">Watch and judge for yourself</h2>
+          <p>The models saw YouTube metadata only.  Compare their assessments with the video.</p>
+        </div>
+        <div class="comparison-player">
+          <iframe src="<%= preview.embedUrl %>" title="Preview: <%= preview.title %>" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+        </div>
+      </section>
+    <% } %>
   <% } %>
 </main>
 <link rel="stylesheet" href="/model-comparison/style.css">
