@@ -248,6 +248,39 @@ test('production proxy configuration produces secure session cookies', async () 
     });
     assert.equal(opaqueOrigin.status, 403);
 
+    const opaqueSameOrigin = await fetch(`${productionUrl}/auth/login`, {
+      method: 'POST',
+      redirect: 'manual',
+      headers: {
+        origin: 'null',
+        'sec-fetch-site': 'same-origin',
+        'x-forwarded-proto': 'https',
+        'content-type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        email: 'parent@example.com',
+        password: 'password123',
+      }),
+    });
+    assert.equal(opaqueSameOrigin.status, 302);
+    assert.match(opaqueSameOrigin.headers.get('set-cookie'), /Secure/i);
+
+    const opaqueCrossSite = await fetch(`${productionUrl}/auth/login`, {
+      method: 'POST',
+      redirect: 'manual',
+      headers: {
+        origin: 'null',
+        'sec-fetch-site': 'cross-site',
+        'x-forwarded-proto': 'https',
+        'content-type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        email: 'parent@example.com',
+        password: 'password123',
+      }),
+    });
+    assert.equal(opaqueCrossSite.status, 403);
+
     const response = await fetch(`${productionUrl}/auth/login`, {
       method: 'POST',
       redirect: 'manual',

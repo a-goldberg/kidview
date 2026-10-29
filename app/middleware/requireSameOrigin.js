@@ -31,6 +31,11 @@ function requireSameOrigin(
     const fetchSite = req.get("sec-fetch-site")
     const hasOpaqueOrigin = originHeader === "null" && !refererHeader
 
+    // Some browser contexts send an opaque Origin for a same-origin form.
+    // Fetch Metadata is browser-controlled, so it can still prove the request
+    // came from this site without accepting a cross-site form submission.
+    if (hasOpaqueOrigin && fetchSite === "same-origin") return next()
+
     // Sandboxed local preview surfaces can send the literal `Origin: null`.
     // Treat that opaque origin like missing evidence during development unless
     // Fetch Metadata positively identifies a cross-site request.
