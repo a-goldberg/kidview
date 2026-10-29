@@ -4,4 +4,7 @@
   <a href="/parent/searches" class="<%= activeSection === 'searches' ? 'is-active' : '' %>">Search Audit</a>
   <a href="/parent/decisions" class="<%= activeSection === 'decisions' ? 'is-active' : '' %>">Decision History</a>
   <a href="/parent/profiles" class="<%= activeSection === 'profiles' ? 'is-active' : '' %>">Profiles &amp; Policies</a>
+  <% if (currentParent && currentParent.role === 'admin' && !currentParent.isDemo) { %>
+    <a href="/parent/accounts" class="<%= activeSection === 'accounts' ? 'is-active' : '' %>">Parent accounts</a>
+  <% } %>
 </nav>

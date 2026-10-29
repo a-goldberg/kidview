@@ -1,0 +1,42 @@
+<%- include('../partials/head', { title }) %>
+<%- include('../partials/header') %>
+<main class="page parent-page">
+  <section class="page-heading compact-heading">
+    <p class="eyebrow">Household settings</p>
+    <h1>Parent accounts</h1>
+    <p class="muted">Parents can manage children, policies, and review decisions.  Household admins can also manage parent accounts.</p>
+  </section>
+  <%- include('dashboard-nav', { activeSection: 'accounts' }) %>
+  <% if (errorMessage) { %><p class="form-error" role="alert"><%= errorMessage %></p><% } %>
+  <% if (savedMessage) { %><p class="decision-status" role="status"><%= savedMessage %></p><% } %>
+  <section class="panel">
+    <h2>Add a parent</h2>
+    <p>Share the login address and password privately.  Email invitations aren't sent.  Public demo visitors belong in the separate demo household.</p>
+    <form class="stacked-form management-form" action="/parent/accounts" method="post">
+      <label>Name <input name="displayName" maxlength="80" required autocomplete="off"></label>
+      <label>Email <input name="email" type="email" maxlength="254" required autocomplete="off"></label>
+      <label>Role <select name="role"><option value="parent">Parent</option><option value="admin">Household admin</option></select></label>
+      <label>Password <input name="password" type="password" minlength="12" maxlength="72" required autocomplete="new-password"></label>
+      <p class="muted">Use a unique password of at least 12 characters (up to 72 UTF-8 bytes).</p>
+      <button class="primary-button" type="submit">Create parent account</button>
+    </form>
+  </section>
+  <section class="management-list" aria-label="Existing parent accounts">
+    <h2>Existing accounts</h2>
+    <% accounts.forEach(account => { %>
+      <details class="panel management-editor">
+        <summary><strong><%= account.display_name %></strong> · <%= account.email %> · <%= account.role === 'admin' ? 'Household admin' : 'Parent' %> · <%= account.is_active ? 'Active' : 'Disabled' %><%= account.id === currentParent.id ? ' (you)' : '' %></summary>
+        <form class="stacked-form management-form" action="/parent/accounts/<%= account.id %>" method="post">
+          <label>Name <input name="displayName" value="<%= account.display_name %>" maxlength="80" required autocomplete="off"></label>
+          <label>Email <input name="email" type="email" value="<%= account.email %>" maxlength="254" required autocomplete="off"></label>
+          <label>Role <select name="role"><option value="parent" <%= account.role === 'parent' ? 'selected' : '' %>>Parent</option><option value="admin" <%= account.role === 'admin' ? 'selected' : '' %>>Household admin</option></select></label>
+          <label>Status <select name="isActive"><option value="1" <%= account.is_active ? 'selected' : '' %>>Active</option><option value="0" <%= !account.is_active ? 'selected' : '' %>>Disabled</option></select></label>
+          <label>New password (optional) <input name="password" type="password" minlength="12" maxlength="72" autocomplete="new-password"></label>
+          <p class="muted">Leave the password blank to keep it.  Saving signs this account out on its next request.  At least one admin must stay active.</p>
+          <button class="secondary-button" type="submit">Save account</button>
+        </form>
+      </details>
+    <% }) %>
+  </section>
+</main>
+<%- include('../partials/footer') %>

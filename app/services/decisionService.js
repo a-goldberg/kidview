@@ -36,11 +36,13 @@ function validateParentHousehold(householdId, parentUserId) {
   requirePositiveInteger(parentUserId, 'parentUserId');
 
   const parent = db.prepare(
-    'SELECT id FROM parent_users WHERE id = ? AND household_id = ?'
+    `SELECT parent_users.id FROM parent_users JOIN households ON households.id = parent_users.household_id
+     WHERE parent_users.id = ? AND parent_users.household_id = ?
+       AND parent_users.is_active = 1 AND households.is_demo = 0`
   ).get(parentUserId, householdId);
 
   if (!parent) {
-    throw new RangeError('Parent user must belong to the selected household.');
+    throw new RangeError('An active parent must belong to the selected household; demo households are read-only.');
   }
 }
 
