@@ -154,7 +154,12 @@ function getActiveChildProfile(req) {
     return null;
   }
 
-  return getChildProfileForHousehold(payload);
+  // An authenticated parent must never inherit another household's child cookie.
+  if (req.session && req.session.parentUser && req.session.parentUser.householdId !== payload.householdId) return null;
+  const child = getChildProfileForHousehold(payload);
+  if (!child) return null;
+  const household = db.prepare('SELECT is_demo FROM households WHERE id = ?').get(child.householdId);
+  return { ...child, isDemo: household.is_demo };
 }
 
 function setActiveChildProfile(res, { householdId, childProfileId }) {

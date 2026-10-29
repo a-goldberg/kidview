@@ -119,3 +119,13 @@ document.addEventListener("click", (event) => {
     event.preventDefault();
   }
 });
+
+// Explain read-only demo actions in the UI; the server independently enforces it.
+if (document.querySelector('[data-demo-mode]')) {
+  for (const form of document.querySelectorAll('form[method="post"]')) {
+    const path = new URL(form.action, window.location.origin).pathname;
+    if (['/auth/logout', '/auth/login', '/child/search'].includes(path) || /^\/child\/profile\/\d+\/activate$/.test(path)) continue;
+    for (const control of form.querySelectorAll('input, select, textarea, button')) control.disabled = true;
+    form.title = 'Changes are disabled in the read-only demo.';
+  }
+}

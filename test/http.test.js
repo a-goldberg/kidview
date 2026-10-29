@@ -33,7 +33,7 @@ let server;
 let baseUrl;
 
 function cookieFrom(response) {
-  return response.headers.get('set-cookie')?.split(';', 1)[0] || '';
+  return response.headers.getSetCookie().find(value => value.startsWith('kidview.sid='))?.split(';', 1)[0] || '';
 }
 
 function sameOriginHeaders(extra = {}) {

@@ -538,7 +538,9 @@ function getSearchAuditList(householdId, filters = {}) {
         search_events.blocked_count,
         child_profiles.display_name AS child_profile_name
        FROM search_events
-       LEFT JOIN child_profiles ON child_profiles.id = search_events.child_profile_id
+       LEFT JOIN child_profiles
+        ON child_profiles.id = search_events.child_profile_id
+        AND child_profiles.household_id = search_events.household_id
        WHERE ${where.join(' AND ')}
        ORDER BY ${order}
        LIMIT 100`
@@ -580,7 +582,9 @@ function getSearchAuditDetail(householdId, searchEventId) {
         search_events.*,
         child_profiles.display_name AS child_profile_name
        FROM search_events
-       LEFT JOIN child_profiles ON child_profiles.id = search_events.child_profile_id
+       LEFT JOIN child_profiles
+        ON child_profiles.id = search_events.child_profile_id
+        AND child_profiles.household_id = search_events.household_id
        WHERE search_events.household_id = ?
         AND search_events.id = ?`
     )

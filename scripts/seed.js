@@ -123,8 +123,8 @@ db.transaction(() => {
 
   const parentUser = db
     .prepare(
-      `INSERT INTO parent_users (household_id, email, password_hash, display_name)
-       VALUES (?, ?, ?, ?)`,
+      `INSERT INTO parent_users (household_id, email, password_hash, display_name, role)
+       VALUES (?, ?, ?, ?, 'admin')`,
     )
     .run(
       household.lastInsertRowid,

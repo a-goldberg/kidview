@@ -1,5 +1,6 @@
 const express = require("express");
 const rateLimit = require("express-rate-limit");
+const { ACTIVE_CHILD_COOKIE_NAME } = require("../services/childProfileSessionService");
 const { authenticateParent } = require("../services/authService");
 
 const router = express.Router();
@@ -50,6 +51,7 @@ router.post("/login", loginLimiter, async (req, res, next) => {
         return next(error);
       }
 
+      res.clearCookie(ACTIVE_CHILD_COOKIE_NAME);
       req.session.parentUser = parent;
       return req.session.save((saveError) => {
         if (saveError) {

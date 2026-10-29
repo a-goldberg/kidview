@@ -10,6 +10,8 @@ const db = require("./app/db/database");
 const authRoutes = require("./app/routes/auth");
 const childRoutes = require("./app/routes/child");
 const parentRoutes = require("./app/routes/parent");
+const parentAccountRoutes = require("./app/routes/parentAccounts");
+const { refreshParent, demoAccess } = require("./app/middleware/accountAccess");
 const modelComparisonRoutes = require("./model-comparison/routes");
 const requireSameOrigin = require("./app/middleware/requireSameOrigin");
 const displayLabels = require("./app/services/displayLabels");
@@ -88,6 +90,14 @@ function createApp(options = {}) {
   );
 
   app.use((req, res, next) => {
+    res.locals.sessionCookieName = appConfig.sessionCookieName;
+    res.set("Cache-Control", "no-store");
+    next();
+  });
+  app.use(refreshParent);
+  app.use(demoAccess);
+
+  app.use((req, res, next) => {
     res.locals.currentParent = req.session.parentUser || null;
     res.locals.sessionCookieName = appConfig.sessionCookieName;
     res.locals.displayLabel = displayLabels.displayLabel;
@@ -102,6 +112,7 @@ function createApp(options = {}) {
 
   app.use("/auth", authRoutes);
   app.use("/child", childRoutes);
+  app.use("/parent/accounts", parentAccountRoutes);
   app.use("/parent", parentRoutes);
   app.use("/model-comparison", modelComparisonRoutes);
 

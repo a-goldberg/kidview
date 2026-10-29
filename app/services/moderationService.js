@@ -877,6 +877,10 @@ function remoderateChannelVideos({ householdId, channelId }) {
 }
 
 function getChildSafeVideo({ householdId, childProfileId, videoId }) {
+  // Demo visitors may only inspect synthetic demo catalog entries, even by ID.
+  const household = db.prepare('SELECT is_demo FROM households WHERE id = ?').get(householdId)
+  if (household && household.is_demo && !db.prepare("SELECT id FROM videos WHERE id = ? AND source = 'demo'").get(videoId)) return null
+
   const candidate = db
     .prepare(`${MODERATION_CANDIDATE_SELECT} WHERE videos.id = ?`)
     .get(videoId)

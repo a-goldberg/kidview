@@ -4,12 +4,16 @@
 <main class="page narrow-page">
   <section class="video-player" data-kidview-player data-video-id="<%= video.videoId %>" data-search-event-id="<%= searchEventId || '' %>" data-youtube-video-id="<%= video.externalId %>">
     <%- include('profile-context', { childProfile }) %>
+    <% if (isDemo) { %>
+      <p class="panel">This is a synthetic sample video.  Playback is unavailable in the read-only demo.</p>
+    <% } else { %>
     <div class="player-stage" data-player-stage>
       <div class="player-loading" data-player-loading>
         <img src="<%= video.iconPath %>" alt="" aria-hidden="true">
         <p>Getting this video ready…</p>
       </div>
     </div>
+    <% } %>
     <p class="category"><%= video.primaryCategory %> · <%= Math.round(video.durationSeconds / 60) %> min</p>
     <h1><%= video.title %></h1>
     <p><%= video.childExplanation %></p>
@@ -24,5 +28,5 @@
   </section>
 </main>
 
-<script defer src="/js/video-player.js"></script>
+<% if (!isDemo) { %><script defer src="/js/video-player.js"></script><% } %>
 <%- include('../partials/footer') %>

@@ -23,10 +23,10 @@
     <% if (video.description) { %><p class="muted"><%= video.description %></p><% } %>
     <div class="action-row">
       <a class="primary-button" href="/parent/reviews">Back to reviews</a>
-      <% if (video.external_id) { %>
+      <% if (video.source === 'youtube' && video.external_id) { %>
         <a class="secondary-button" href="https://www.youtube.com/watch?v=<%= encodeURIComponent(video.external_id) %>" target="_blank" rel="noopener noreferrer">Open on YouTube</a>
       <% } %>
-      <% if (video.channel_external_id) { %>
+      <% if (video.source === 'youtube' && video.channel_external_id) { %>
         <a class="secondary-button" href="https://www.youtube.com/channel/<%= encodeURIComponent(video.channel_external_id) %>" target="_blank" rel="noopener noreferrer">Open channel</a>
       <% } %>
     </div>
