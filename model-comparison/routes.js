@@ -2,7 +2,7 @@ const path = require("node:path");
 const express = require("express");
 const rateLimit = require("express-rate-limit");
 const { searchVideos } = require("./search");
-const { compareVideo } = require("./compare");
+const { MODELS, DEFAULT_MODEL_IDS, selectModels, compareVideo } = require("./compare");
 const { baselineFor } = require("./baseline");
 
 const router = express.Router();
@@ -16,6 +16,7 @@ router.use((req, res, next) => {
   next();
 });
 router.get("/style.css", (req, res) => res.sendFile(path.join(__dirname, "style.css")));
+router.get("/selection.js", (req, res) => res.sendFile(path.join(__dirname, "selection.js")));
 router.use("/search", rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: "draft-7", legacyHeaders: false }));
 router.use("/compare", rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: "draft-7", legacyHeaders: false }));
 
@@ -29,8 +30,8 @@ function currentVideos(req) {
   return entry.videos;
 }
 
-function renderPage(res, { query = "", videos = [], selectedId = "", comparisons = [], baseline = null, preview = null, error = "" } = {}) {
-  res.render(view, { title: "Model comparison", query, videos, selectedId, comparisons, baseline, preview, error });
+function renderPage(res, { query = "", videos = [], selectedId = "", selectedModelIds = DEFAULT_MODEL_IDS, comparisons = [], baseline = null, preview = null, error = "" } = {}) {
+  res.render(view, { title: "Model comparison", query, videos, selectedId, selectedModelIds, models: MODELS, comparisons, baseline, preview, error });
 }
 
 router.get("/", (req, res) => renderPage(res));
@@ -38,7 +39,7 @@ router.get("/", (req, res) => renderPage(res));
 router.post("/search", async (req, res, next) => {
   const query = typeof req.body.q === "string" ? req.body.q.trim() : "";
   if (!query || query.length > 200) {
-    return res.status(400).render(view, { title: "Model comparison", query, videos: [], selectedId: "", comparisons: [], baseline: null, preview: null, error: "Enter a search of 1 to 200 characters." });
+    return res.status(400).render(view, { title: "Model comparison", query, videos: [], selectedId: "", selectedModelIds: DEFAULT_MODEL_IDS, models: MODELS, comparisons: [], baseline: null, preview: null, error: "Enter a search of 1 to 200 characters." });
   }
   try {
     recentSearches.delete(req.sessionID);
@@ -63,8 +64,14 @@ router.post("/compare", async (req, res) => {
   const selectedId = typeof req.body.videoId === "string" ? req.body.videoId : "";
   const video = videos.find((item) => item.externalVideoId === selectedId);
   if (!video) return renderPage(res, { query, videos, error: "Search again, then choose one of the three videos." });
+  let selectedModelIds;
   try {
-    const comparisons = await compareVideo(video, process.env.OPENROUTER_API_KEY);
+    selectedModelIds = selectModels(req.body.models).map((model) => model.id);
+  } catch (error) {
+    return res.status(400).render(view, { title: "Model comparison", query, videos, selectedId, selectedModelIds: DEFAULT_MODEL_IDS, models: MODELS, comparisons: [], baseline: null, preview: null, error: error.message });
+  }
+  try {
+    const comparisons = await compareVideo(video, process.env.OPENROUTER_API_KEY, selectedModelIds);
     const baseline = baselineFor(video);
     const preview = /^[A-Za-z0-9_-]{11}$/.test(video.externalVideoId)
       ? {
@@ -73,9 +80,9 @@ router.post("/compare", async (req, res) => {
         watchUrl: `https://www.youtube.com/watch?v=${video.externalVideoId}`,
       }
       : null;
-    return renderPage(res, { query, videos, selectedId, comparisons, baseline, preview });
+    return renderPage(res, { query, videos, selectedId, selectedModelIds, comparisons, baseline, preview });
   } catch (error) {
-    return renderPage(res, { query, videos, selectedId, error: error.message });
+    return renderPage(res, { query, videos, selectedId, selectedModelIds, error: error.message });
   }
 });
 

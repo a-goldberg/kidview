@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const youtube = require("../app/services/youtubeSourceService");
 const config = require("../app/config");
 const { searchVideos } = require("./search");
-const { compareVideo } = require("./compare");
+const { MODELS, DEFAULT_MODEL_IDS, selectModels, compareVideo } = require("./compare");
 const { baselineFor } = require("./baseline");
 
 function candidate(id, changes = {}) {
@@ -115,7 +115,7 @@ test("KidView baseline distinguishes format blocks, rule review, and default vis
   assert.equal(baselineFor(candidate("partial", { metadataIncomplete: true })).decision, "unknown");
 });
 
-test("all models receive identical metadata and report usage from OpenRouter", async () => {
+test("default models receive identical metadata and report usage from OpenRouter", async () => {
   const original = global.fetch;
   const requests = [];
   global.fetch = async (url, options) => {
@@ -138,6 +138,35 @@ test("all models receive identical metadata and report usage from OpenRouter", a
     assert.deepEqual(requests.map((request) => request.messages), [requests[0].messages, requests[0].messages, requests[0].messages]);
     assert.deepEqual(results.map((result) => result.cost), [0.00012, 0.00012, 0.00012]);
     assert.equal(results[0].assessment.under13, "suitable");
+    assert.deepEqual(requests.map((request) => request.model), DEFAULT_MODEL_IDS);
+  } finally {
+    global.fetch = original;
+  }
+});
+
+test("a comparison calls only the chosen models and rejects invalid selections before API use", async () => {
+  const original = global.fetch;
+  const requested = [];
+  global.fetch = async (_url, options) => {
+    requested.push(JSON.parse(options.body).model);
+    return { ok: true, json: async () => ({
+      choices: [{ message: { content: JSON.stringify({
+        synopsis: "A science lesson.", ageRange: "8-12", under13: "suitable", reason: "Child-oriented metadata.",
+      }) } }],
+    }) };
+  };
+  try {
+    assert.equal(MODELS.length, 8);
+    const chosen = [MODELS[3].id, MODELS[6].id];
+    assert.deepEqual(selectModels(chosen).map((model) => model.id), chosen);
+    const results = await compareVideo(candidate("one"), "test-key", chosen);
+    assert.deepEqual(requested, chosen);
+    assert.deepEqual(results.map((result) => result.id), chosen);
+    await assert.rejects(compareVideo(candidate("one"), "test-key", []), /one to three/);
+    await assert.rejects(compareVideo(candidate("one"), "test-key", [MODELS[0].id, MODELS[0].id]), /one to three/);
+    await assert.rejects(compareVideo(candidate("one"), "test-key", MODELS.slice(0, 4).map((model) => model.id)), /one to three/);
+    await assert.rejects(compareVideo(candidate("one"), "test-key", ["unknown/model"]), /from the list/);
+    assert.deepEqual(requested, chosen);
   } finally {
     global.fetch = original;
   }
