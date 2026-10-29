@@ -5,7 +5,8 @@
   const key = "kidview:model-comparison:selected-models";
   const choices = [...selector.querySelectorAll('input[name="models"]')];
   const message = selector.querySelector("[data-selection-message]");
-  const submit = selector.form.querySelector('button[type="submit"]');
+  const summary = selector.querySelector("[data-model-summary]");
+  const submit = selector.closest("form").querySelector('button[type="submit"]');
 
   try {
     const saved = JSON.parse(sessionStorage.getItem(key));
@@ -19,6 +20,7 @@
     const selected = choices.filter((choice) => choice.checked).map((choice) => choice.value);
     choices.forEach((choice) => { choice.disabled = selected.length >= 3 && !choice.checked; });
     submit.disabled = selected.length === 0;
+    summary.textContent = `Models: ${selected.length} selected`;
     message.textContent = selected.length === 0 ? "Choose at least one model." : `${selected.length} of 3 selected`;
     try { sessionStorage.setItem(key, JSON.stringify(selected)); } catch { /* Keep working without storage. */ }
   }

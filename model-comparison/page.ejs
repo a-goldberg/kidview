@@ -35,19 +35,21 @@
               </label>
             <% }) %>
           </div>
-          <fieldset class="comparison-model-selector" data-model-selector>
-            <legend>Models to compare</legend>
-            <p>Choose one to three.  Your selection stays in this browser tab for this visit.</p>
-            <div class="comparison-model-options">
-              <% models.forEach((model) => { %>
-                <label class="comparison-model-option">
-                  <input type="checkbox" name="models" value="<%= model.id %>" <%= selectedModelIds.includes(model.id) ? 'checked' : '' %>>
-                  <span><strong><%= model.name %></strong><small><%= model.note %></small></span>
-                </label>
-              <% }) %>
+          <details class="comparison-model-selector" data-model-selector>
+            <summary><span data-model-summary>Models: <%= selectedModelIds.length %> selected</span> (change)</summary>
+            <div class="comparison-model-selector-content">
+              <p>Choose one to three.  Your selection stays in this tab.</p>
+              <div class="comparison-model-options">
+                <% models.forEach((model) => { %>
+                  <label class="comparison-model-option">
+                    <input type="checkbox" name="models" value="<%= model.id %>" <%= selectedModelIds.includes(model.id) ? 'checked' : '' %>>
+                    <span><%= model.name %></span>
+                  </label>
+                <% }) %>
+              </div>
+              <p class="comparison-selection-message" data-selection-message aria-live="polite"></p>
             </div>
-            <p class="comparison-selection-message" data-selection-message aria-live="polite"></p>
-          </fieldset>
+          </details>
           <button type="submit">Compare selected video</button>
         </form>
       <% } %>
