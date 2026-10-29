@@ -1,0 +1,123 @@
+<%- include('../app/views/partials/head', { title }) %>
+<main class="comparison-page">
+  <header class="comparison-header">
+    <a href="/parent">← KidView parent dashboard</a>
+    <p class="eyebrow">KidView experiment</p>
+    <h1>Compare video assessments</h1>
+    <p>Search YouTube, choose a result, and compare up to three models assessing it from metadata alone.</p>
+  </header>
+
+  <form class="comparison-search" method="post" action="/model-comparison/search">
+    <label for="query">YouTube search</label>
+    <div class="comparison-search-row">
+      <input id="query" name="q" type="search" maxlength="200" required value="<%= query %>" placeholder="Try: how do volcanoes form?">
+      <button type="submit">Find videos</button>
+    </div>
+  </form>
+
+  <% if (error) { %><p class="comparison-error" role="alert"><%= error %></p><% } %>
+
+  <% if (query) { %>
+    <section aria-labelledby="results-heading">
+      <div class="comparison-section-heading">
+        <h2 id="results-heading">Search results</h2>
+        <p>These are the first three YouTube results we can verify aren't Shorts or live streams.  Other KidView decisions don't filter this list, and the search isn't saved to KidView history or moderation.</p>
+      </div>
+      <% if (!videos.length) { %>
+        <p>No videos remained after skipping Shorts and live streams within the search limit.  Try a different query.</p>
+      <% } else { %>
+        <form method="post" action="/model-comparison/compare">
+          <div class="comparison-videos">
+            <% videos.forEach((video) => { %>
+              <label class="comparison-video">
+                <input type="radio" name="videoId" value="<%= video.externalVideoId %>" required <%= selectedId === video.externalVideoId ? 'checked' : '' %>>
+                <span class="comparison-video-text"><strong><%= video.title %></strong><small><%= video.category %></small></span>
+              </label>
+            <% }) %>
+          </div>
+          <details class="comparison-model-selector" data-model-selector>
+            <summary><span data-model-summary>Models: <%= selectedModelIds.length %> selected</span> (change)</summary>
+            <div class="comparison-model-selector-content">
+              <p>Choose one to three.  Your selection stays in this tab.</p>
+              <div class="comparison-model-options">
+                <% models.forEach((model) => { %>
+                  <label class="comparison-model-option">
+                    <input type="checkbox" name="models" value="<%= model.id %>" <%= selectedModelIds.includes(model.id) ? 'checked' : '' %>>
+                    <span><%= model.name %></span>
+                  </label>
+                <% }) %>
+              </div>
+              <p class="comparison-selection-message" data-selection-message aria-live="polite"></p>
+            </div>
+          </details>
+          <button type="submit">Compare selected video</button>
+        </form>
+      <% } %>
+    </section>
+  <% } %>
+
+  <% if (comparisons.length) { %>
+    <section class="comparison-baseline" aria-labelledby="baseline-heading">
+      <div>
+        <p class="comparison-kicker">KidView baseline</p>
+        <h2 id="baseline-heading">Default rule-based decision</h2>
+        <p class="comparison-baseline-note">A read-only estimate using KidView's default rules.  Household overrides aren't included, and no review item is created.</p>
+      </div>
+      <div class="comparison-baseline-result">
+        <strong class="baseline-decision <%= baseline.decision %>"><%= displayLabel('finalDecision', baseline.decision, displayLocale) %></strong>
+        <span>Would show to a child: <strong><%= baseline.wouldShow ? 'Yes' : 'No' %></strong></span>
+        <span><%= baseline.reason %></span>
+        <span>Rule score: <%= baseline.score == null ? 'Unavailable' : baseline.score %> (not a probability)</span>
+        <% const signals = [...baseline.contentTags.map((tag) => displayLabel('contentTag', tag, displayLocale)), ...baseline.qualityTags.map((tag) => displayLabel('qualityTag', tag, displayLocale))]; %>
+        <% if (signals.length) { %><span>Positive signals: <%= signals.slice(0, 3).join(' · ') %></span><% } %>
+        <% if (baseline.riskTags.length) { %><span>Risk signals: <%= baseline.riskTags.slice(0, 3).map((tag) => displayLabel('riskTag', tag, displayLocale)).join(' · ') %></span><% } %>
+      </div>
+    </section>
+    <section aria-labelledby="comparison-heading">
+      <div class="comparison-section-heading">
+        <h2 id="comparison-heading">Model responses</h2>
+        <p>These are estimates from YouTube metadata, not a review of the video itself.  "Uncertain" means the metadata doesn't support a firm call.</p>
+      </div>
+      <div class="comparison-models">
+        <% comparisons.forEach((item) => { %>
+          <article class="comparison-model">
+            <h3><%= item.name %></h3>
+            <p class="comparison-model-id"><%= item.id %></p>
+            <% if (item.error) { %>
+              <p class="comparison-error">This model couldn't return an assessment: <%= item.error %></p>
+            <% } else { %>
+              <p><strong>Synopsis</strong><br><%= item.assessment.synopsis %></p>
+              <p><strong>Likely age range</strong><br><%= item.assessment.ageRange %></p>
+              <p><strong>For children 12 and younger</strong><br><span class="assessment-status <%= item.assessment.under13 %>"><%= item.assessment.under13.replace('_', ' ') %></span></p>
+              <p><strong>Why</strong><br><%= item.assessment.reason %></p>
+            <% } %>
+            <dl class="comparison-metrics">
+              <div><dt>Latency</dt><dd><%= (item.latencyMs / 1000).toFixed(2) %> s</dd></div>
+              <div><dt>Input tokens</dt><dd><%= item.promptTokens ?? '—' %></dd></div>
+              <div><dt>Output tokens</dt><dd><%= item.completionTokens ?? '—' %></dd></div>
+              <div><dt>Cost</dt><dd><%= item.cost == null ? '—' : '$' + item.cost.toFixed(6) %></dd></div>
+            </dl>
+          </article>
+        <% }) %>
+      </div>
+    </section>
+    <% if (preview) { %>
+      <section aria-labelledby="preview-heading">
+        <div class="comparison-section-heading">
+          <h2 id="preview-heading">Watch and judge for yourself</h2>
+          <p>The models saw YouTube metadata only.  Compare their assessments with the video.</p>
+        </div>
+        <% if (preview.embedUrl) { %>
+          <div class="comparison-player">
+            <iframe src="<%= preview.embedUrl %>" title="Preview: <%= preview.title %>" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+          </div>
+        <% } else { %>
+          <p>YouTube says this video cannot be embedded.  <a href="<%= preview.watchUrl %>" target="_blank" rel="noopener noreferrer">Open it on YouTube</a>.</p>
+        <% } %>
+      </section>
+    <% } %>
+  <% } %>
+</main>
+<link rel="stylesheet" href="/model-comparison/style.css">
+<script defer src="/model-comparison/selection.js"></script>
+<%- include('../app/views/partials/footer') %>

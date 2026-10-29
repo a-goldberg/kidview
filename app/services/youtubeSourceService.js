@@ -153,6 +153,15 @@ function mapYouTubeVideo(video, categoryTitles) {
     transcriptSample: null,
     primaryCategoryHint: null,
     viewCount: Number(statistics.viewCount || 0),
+    // The comparison prototype can use the complete API metadata without
+    // changing the existing child-facing candidate fields or database schema.
+    youtubeMetadata: {
+      snippet: video.snippet,
+      contentDetails: video.contentDetails,
+      status: video.status,
+      liveStreamingDetails: video.liveStreamingDetails || null,
+      statistics,
+    },
   };
 }
 
@@ -180,7 +189,12 @@ function getCategoryTitles() {
   return categoryTitlesPromise;
 }
 
-async function searchCandidatePage(query, { pageToken = null, maxResults } = {}) {
+async function searchCandidatePage(query, {
+  pageToken = null,
+  maxResults,
+  embeddableOnly = true,
+  includeSearchOnly = false,
+} = {}) {
   requireApiKey();
 
   const searchResponse = await fetchYouTubeJson('search', {
@@ -190,14 +204,15 @@ async function searchCandidatePage(query, { pageToken = null, maxResults } = {})
     maxResults: maxResults || config.youtubeMaxSearchResults,
     pageToken,
     safeSearch: config.youtubeSafeSearch,
-    videoEmbeddable: 'true',
+    videoEmbeddable: embeddableOnly ? 'true' : undefined,
     regionCode: config.youtubeRegionCode,
     relevanceLanguage: config.youtubeRelevanceLanguage
   });
 
-  const videoIds = (searchResponse.items || [])
-    .map((item) => item && item.id && item.id.videoId)
-    .filter((id) => typeof id === 'string' && /^[A-Za-z0-9_-]{11}$/.test(id));
+  const searchItems = (searchResponse.items || [])
+    .filter((item) => item && item.id && typeof item.id.videoId === 'string' &&
+      /^[A-Za-z0-9_-]{11}$/.test(item.id.videoId));
+  const videoIds = searchItems.map((item) => item.id.videoId);
 
   if (!videoIds.length) {
     return {
@@ -225,7 +240,36 @@ async function searchCandidatePage(query, { pageToken = null, maxResults } = {})
   );
 
   return {
-    candidates: videoIds.map((videoId) => videosById.get(videoId)).filter(Boolean),
+    candidates: searchItems.map((item) => {
+      const detailed = videosById.get(item.id.videoId);
+      if (detailed || !includeSearchOnly) return detailed;
+      // A search hit can disappear before videos.list returns its details.
+      // Preserve its position for the raw-results demo and mark the limits of
+      // what KidView and the models can infer from the remaining snippet.
+      const snippet = item.snippet || {};
+      const liveStatus = snippet.liveBroadcastContent === 'live' ||
+        snippet.liveBroadcastContent === 'upcoming' ? snippet.liveBroadcastContent : 'none';
+      return {
+        source: 'youtube',
+        externalVideoId: item.id.videoId,
+        title: typeof snippet.title === 'string' ? snippet.title : 'Unavailable video',
+        description: typeof snippet.description === 'string' ? snippet.description : '',
+        channelExternalId: snippet.channelId || null,
+        channelTitle: typeof snippet.channelTitle === 'string' ? snippet.channelTitle : 'Unknown channel',
+        youtubeCategoryId: null,
+        youtubeCategoryTitle: null,
+        durationSeconds: 0,
+        publishedAt: snippet.publishedAt || null,
+        isShort: false,
+        isLivestream: liveStatus !== 'none',
+        liveStatus,
+        embeddable: null,
+        madeForKids: false,
+        viewCount: 0,
+        metadataIncomplete: true,
+        youtubeMetadata: { searchSnippet: snippet, metadataIncomplete: true },
+      };
+    }).filter(Boolean),
     nextPageToken: searchResponse.nextPageToken || null,
   };
 }
