@@ -27,7 +27,11 @@
 .comparison-kicker { text-transform: uppercase; letter-spacing: .1em; font-size: .75rem; font-weight: 700; color: #176575; margin: 0; }
 .comparison-baseline-note { color: #53676b; max-width: 40rem; margin-bottom: 0; }
 .comparison-baseline-result { display: flex; flex-direction: column; gap: .4rem; min-width: 14rem; }
-.comparison-baseline-result strong { color: #23724e; font-size: 1.25rem; }
+.comparison-baseline-result > strong { color: #23724e; font-size: 1.25rem; }
+.comparison-baseline-result .baseline-decision.block { color: #a32d2d; }
+.comparison-baseline-result .baseline-decision.review,
+.comparison-baseline-result .baseline-decision.allow_limited,
+.comparison-baseline-result .baseline-decision.unknown { color: #9a681a; }
 .comparison-baseline-result span { font-size: .9rem; }
 .comparison-player { aspect-ratio: 16 / 9; max-width: 960px; border-radius: 12px; overflow: hidden; background: #16272c; }
 .comparison-player iframe { display: block; width: 100%; height: 100%; border: 0; }

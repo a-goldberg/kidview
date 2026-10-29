@@ -3,7 +3,7 @@ const express = require("express");
 const rateLimit = require("express-rate-limit");
 const { searchVideos } = require("./search");
 const { compareVideo } = require("./compare");
-const { scoreCandidate } = require("../app/services/moderationScoringService");
+const { baselineFor } = require("./baseline");
 
 const router = express.Router();
 const recentSearches = new Map();
@@ -65,11 +65,13 @@ router.post("/compare", async (req, res) => {
   if (!video) return renderPage(res, { query, videos, error: "Search again, then choose one of the three videos." });
   try {
     const comparisons = await compareVideo(video, process.env.OPENROUTER_API_KEY);
-    // This is the same rule score used when selecting search results. It has no
-    // household overrides or database effects, which keeps the experiment isolated.
-    const baseline = scoreCandidate({ ...video, primaryCategory: video.category }, null);
+    const baseline = baselineFor(video);
     const preview = /^[A-Za-z0-9_-]{11}$/.test(video.externalVideoId)
-      ? { title: video.title, embedUrl: `https://www.youtube-nocookie.com/embed/${video.externalVideoId}` }
+      ? {
+        title: video.title,
+        embedUrl: video.embeddable === false ? null : `https://www.youtube-nocookie.com/embed/${video.externalVideoId}`,
+        watchUrl: `https://www.youtube.com/watch?v=${video.externalVideoId}`,
+      }
       : null;
     return renderPage(res, { query, videos, selectedId, comparisons, baseline, preview });
   } catch (error) {

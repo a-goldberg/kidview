@@ -898,6 +898,7 @@ function getChildSafeVideo({ householdId, childProfileId, videoId }) {
 
 module.exports = {
   ageInDays,
+  formatHardFilter,
   getChildSafeVideo,
   moderateCandidates,
   moderateCandidatesWithDiagnostics,
