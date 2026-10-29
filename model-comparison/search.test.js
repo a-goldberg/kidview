@@ -24,22 +24,34 @@ function candidate(id, changes = {}) {
   };
 }
 
-test("comparison search keeps the first three hits regardless of KidView decisions", async () => {
+test("comparison search skips Shorts and live recordings, then keeps other KidView blocks", async () => {
   const original = youtube.searchCandidatePage;
-  let receivedOptions;
+  const receivedOptions = [];
   youtube.searchCandidatePage = async (_query, options) => {
-    receivedOptions = options;
-    return { candidates: [
+    receivedOptions.push(options);
+    if (receivedOptions.length === 1) return { candidates: [
       candidate("short", { isShort: true }),
       candidate("live", { liveStatus: "live" }),
-      candidate("risky", { title: "Science lesson with weapons for kids" }),
+      candidate("completed", { liveStatus: "completed_live" }),
+      candidate("partial", { metadataIncomplete: true }),
+      candidate("noembed", { embeddable: false }),
     ], nextPageToken: "next" };
+    return { candidates: [
+      candidate("risky", { title: "Science lesson with weapons for kids" }),
+      candidate("review", { title: "A tour", description: "Travel through towns", channelTitle: "Local", youtubeCategoryTitle: "Travel & Events", viewCount: 10000, madeForKids: false }),
+    ], nextPageToken: null };
   };
   try {
     const results = await searchVideos("science");
-    assert.deepEqual(results.map((item) => item.externalVideoId), ["short", "live", "risky"]);
+    assert.deepEqual(results.map((item) => item.externalVideoId), ["noembed", "risky", "review"]);
     assert.equal(results[0].category, "Education");
-    assert.deepEqual(receivedOptions, { maxResults: 3, embeddableOnly: false, includeSearchOnly: true });
+    assert.equal(receivedOptions.length, 2);
+    assert.equal(receivedOptions[0].pageToken, null);
+    assert.equal(receivedOptions[1].pageToken, "next");
+    assert.equal(receivedOptions[0].embeddableOnly, false);
+    assert.equal(receivedOptions[0].includeSearchOnly, true);
+    assert.equal(baselineFor(results[1]).decision, "block");
+    assert.equal(baselineFor(results[2]).decision, "review");
   } finally {
     youtube.searchCandidatePage = original;
   }
@@ -66,14 +78,17 @@ test("demo adapter keeps search order and missing details while retaining config
     return { ok: true, json: async () => ({ items: [] }) };
   };
   try {
-    const results = await searchVideos("example");
-    assert.deepEqual(results.map((item) => item.title), ["First", "Second", "Third"]);
-    assert.equal(results.every((item) => item.metadataIncomplete), true);
+    const results = await youtube.searchCandidatePage("example", {
+      maxResults: 3, embeddableOnly: false, includeSearchOnly: true,
+    });
+    assert.deepEqual(results.candidates.map((item) => item.title), ["First", "Second", "Third"]);
+    assert.equal(results.candidates.every((item) => item.metadataIncomplete), true);
     assert.equal(searchUrls[0].searchParams.get("safeSearch"), config.youtubeSafeSearch);
     assert.equal(searchUrls[0].searchParams.has("videoEmbeddable"), false);
+    assert.deepEqual(await searchVideos("example"), []);
     await youtube.searchCandidatePage("example", { maxResults: 3 });
-    assert.equal(searchUrls[1].searchParams.get("safeSearch"), config.youtubeSafeSearch);
-    assert.equal(searchUrls[1].searchParams.get("videoEmbeddable"), "true");
+    assert.equal(searchUrls[2].searchParams.get("safeSearch"), config.youtubeSafeSearch);
+    assert.equal(searchUrls[2].searchParams.get("videoEmbeddable"), "true");
   } finally {
     global.fetch = originalFetch;
     config.youtubeApiKey = originalKey;

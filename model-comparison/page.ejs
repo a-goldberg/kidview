@@ -21,10 +21,10 @@
     <section aria-labelledby="results-heading">
       <div class="comparison-section-heading">
         <h2 id="results-heading">Search results</h2>
-        <p>These are YouTube's first three video results using the configured SafeSearch setting, without KidView filtering.  This search isn't saved to KidView history or moderation.</p>
+        <p>These are the first three YouTube results we can verify aren't Shorts or live streams.  Other KidView decisions don't filter this list, and the search isn't saved to KidView history or moderation.</p>
       </div>
       <% if (!videos.length) { %>
-        <p>YouTube returned no video results.  Try a different query.</p>
+        <p>No videos remained after skipping Shorts and live streams within the search limit.  Try a different query.</p>
       <% } else { %>
         <form method="post" action="/model-comparison/compare">
           <div class="comparison-videos">
