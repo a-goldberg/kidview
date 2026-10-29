@@ -1,11 +1,5 @@
 # KidView
 
-## Model comparison experiment
-
-The separate parent-only prototype is at `/model-comparison`. It uses the configured YouTube Data API key even if the main app is running in mock mode. Add `OPENROUTER_API_KEY=your-key` to the root `.env` file, which Git ignores. Do not put the key in `model-comparison/`, source code, or `.env.example`. Restart the server after adding it.
-
-Each search uses KidView's YouTube source settings and rule-based filters, then keeps up to three results briefly in server memory. It does not create KidView search history, usage, or parent review entries. Each comparison makes three paid OpenRouter requests. See [`model-comparison/PLAN.md`](model-comparison/PLAN.md) for scope and limitations.
-
 KidView is a small Node.js, Express, and EJS web app for a household-controlled child video discovery gateway.
 
 The app uses plain server-rendered pages, SQLite, and small service modules for household policies, moderation, search, and playback usage.
@@ -115,7 +109,7 @@ Current configurable values are:
 
 Daily search limits are enforced before a source request is made. Daily video limits are enforced before an eligible video starts: KidView counts distinct videos started by that child on the configured local calendar day, so restarting the same video does not consume another allowance. Playback progress is recorded from the embedded player as bounded, monotonic server-side session data; it is not a client-provided “watched” assertion. Set `USAGE_TIME_ZONE` to define the household-day boundary (the default is `America/Chicago`).
 
-Migration 013 removes the unused `policy_profiles.allow_shorts` and `policy_profiles.allow_livestreams` columns.  Shorts and live/upcoming streams remain fixed format guardrails.  Non-embeddable videos remain a playback constraint rather than a parent setting.
+Migration 013 removes the unused `policy_profiles.allow_shorts` and `policy_profiles.allow_livestreams` columns. Shorts and live/upcoming streams remain fixed format guardrails. Non-embeddable videos remain a playback constraint rather than a parent setting.
 
 ### Parent Profile Management
 
@@ -200,7 +194,7 @@ The API key must stay on the server. It is read by `app/services/youtubeSourceSe
 
 Because KidView calls YouTube from Node, the API key should not be restricted by browser HTTP referrers. For production, prefer a server-side restriction such as allowed server IP addresses. For local development, either use an unrestricted development key or add a restriction that works for your local server environment. A key restricted to website referrers can fail with `Requests from referer <empty> are blocked.`
 
-The YouTube adapter calls `search.list`, fetches matching video details with `videos.list`, and caches the regional `videoCategories.list` response. It uses YouTube's self-assigned category title for the child-facing category label and local category icon rather than guessing a category from title or description text. If YouTube has no useful category, KidView shows `General`.  There is no inactive AI fallback in the runtime. KidView still applies the same policy and moderation rules after that:
+The YouTube adapter calls `search.list`, fetches matching video details with `videos.list`, and caches the regional `videoCategories.list` response. It uses YouTube's self-assigned category title for the child-facing category label and local category icon rather than guessing a category from title or description text. If YouTube has no useful category, KidView shows `General`. There is no inactive AI fallback in the runtime. KidView still applies the same policy and moderation rules after that:
 
 - no Shorts
 - no currently live or upcoming streams
@@ -234,7 +228,7 @@ Moderation runs in this order:
 1. Format guardrails run first: Shorts and live/upcoming streams are blocked before other decisions. Non-embeddable source candidates are rejected before normal video persistence.
 2. Exact parent video decisions apply next. A specific video decision can override an automated result or a broader blocked/review-first channel decision.
 3. Channel decisions apply next: `review_first` forces review, `blocked` blocks, and `approved` becomes a strong positive scoring signal.
-4. Stored automated moderation reviews are reused only when their rules version and relevant input fingerprint match.  Parent decisions remain separate from this cache.
+4. Stored automated moderation reviews are reused only when their rules version and relevant input fingerprint match. Parent decisions remain separate from this cache.
 5. Unknown videos are scored by deterministic rules.
 
 When a parent changes a channel decision, KidView re-scores all known videos for that channel so stale automated reviews can reflect the new household context.
@@ -399,29 +393,28 @@ npm run pm2:logs
 
 The PM2 app is named `kidview`, binds to `127.0.0.1:3002`, and writes local logs under `logs/`. The npm PM2 scripts set `PM2_HOME=.pm2` so PM2 runtime files stay inside the project workspace. PM2 should be installed globally on the machine, or added as a dev dependency later with `npm install --save-dev pm2` when npm network access is available.
 
-
 ## Code organization and request handling
 
-- `moderationScoringService.js` contains pure scoring rules.  Bump `MODERATION_CACHE_VERSION` when changing rules that affect cached decisions.
+- `moderationScoringService.js` contains pure scoring rules. Bump `MODERATION_CACHE_VERSION` when changing rules that affect cached decisions.
 - `moderationCandidateService.js` defines the database candidate fields used by search, playback, and channel rechecks.
 - `candidatePresentationService.js` supplies shared source labels and explanations for retrieval and seed fixtures.
 - `moderationService.js` applies parent precedence, profile visibility, review-queue changes, and audit classification.
-- `searchService.js` retrieves candidates and commits household moderation, queue, and search-audit writes together.  Source retrieval happens outside the transaction.
-- `assets/icon-source/` holds editable artwork and unused alternatives, including attribution notes.  Only active category images are served from `app/public/icons/`.
+- `searchService.js` retrieves candidates and commits household moderation, queue, and search-audit writes together. Source retrieval happens outside the transaction.
+- `assets/icon-source/` holds editable artwork and unused alternatives, including attribution notes. Only active category images are served from `app/public/icons/`.
 
-A new child search is `POST /child/search`, followed by a redirect to `GET /child/results?searchEventId=...`.  Reopening those results does not consume another search.  It rechecks the originally shown videos against current policy without writing moderation or queue state.  Old query-only result links open the search form.  A search allowance is consumed when the search is admitted, including when the source later fails.
+A new child search is `POST /child/search`, followed by a redirect to `GET /child/results?searchEventId=...`. Reopening those results does not consume another search. It rechecks the originally shown videos against current policy without writing moderation or queue state. Old query-only result links open the search form. A search allowance is consumed when the search is admitted, including when the source later fails.
 
-Unsafe requests use same-origin browser evidence (`Origin`, `Referer`, or `Sec-Fetch-Site: same-origin`).  Explicit cross-origin or malformed evidence returns 403, including on login.  Some local browsers and embedded preview surfaces omit these headers or send the opaque value `Origin: null`, so development and test environments allow those cases unless fetch metadata identifies a cross-site request.  Production still requires positive same-origin evidence.  Scripts making authenticated production POST requests must include the matching origin.  Failed logins have a separate limit of 10 attempts per 15 minutes per client IP.
+Unsafe requests use same-origin browser evidence (`Origin`, `Referer`, or `Sec-Fetch-Site: same-origin`). Explicit cross-origin or malformed evidence returns 403, including on login. Some local browsers and embedded preview surfaces omit these headers or send the opaque value `Origin: null`, so development and test environments allow those cases unless fetch metadata identifies a cross-site request. Production still requires positive same-origin evidence. Scripts making authenticated production POST requests must include the matching origin. Failed logins have a separate limit of 10 attempts per 15 minutes per client IP.
 
-YouTube requests time out after `YOUTUBE_REQUEST_TIMEOUT_MS` (default 10000).  Pagination also has independent page and repeated-token limits.  Search text is limited to 200 characters.  Malformed provider list responses produce a controlled error rather than silently becoming empty results.
+YouTube requests time out after `YOUTUBE_REQUEST_TIMEOUT_MS` (default 10000). Pagination also has independent page and repeated-token limits. Search text is limited to 200 characters. Malformed provider list responses produce a controlled error rather than silently becoming empty results.
 
 ## Production configuration
 
-Local `npm run dev` and the default PM2 profile remain suitable for HTTP development.  To use PM2 behind an HTTPS reverse proxy, select `--env production` explicitly.  Production startup requires:
+Local `npm run dev` and the default PM2 profile remain suitable for HTTP development. To use PM2 behind an HTTPS reverse proxy, select `--env production` explicitly. Production startup requires:
 
 - A unique random `SESSION_SECRET` of at least 32 characters.
 - `APP_ORIGIN` set to the exact public HTTPS origin, without a path.
-- An explicit trusted proxy range.  The production PM2 profile uses `loopback`, which is appropriate only when the proxy connects from the same machine.  Adjust that profile for a different deployment topology; never trust arbitrary forwarded headers.
+- An explicit trusted proxy range. The production PM2 profile uses `loopback`, which is appropriate only when the proxy connects from the same machine. Adjust that profile for a different deployment topology; never trust arbitrary forwarded headers.
 
 After configuring the environment and backing up the database, stop the old process before applying schema changes, then start the production profile:
 
@@ -431,12 +424,18 @@ NODE_ENV=production npm run db:migrate
 PM2_HOME=.pm2 pm2 startOrRestart ecosystem.config.js --only kidview --env production --update-env
 ```
 
-Check login and secure cookies through the actual public proxy after deployment.  Automated tests simulate trusted HTTPS forwarding but do not validate a deployed proxy or TLS certificate.  Demo seeding refuses the default password in production and never prints the configured password.
+Check login and secure cookies through the actual public proxy after deployment. Automated tests simulate trusted HTTPS forwarding but do not validate a deployed proxy or TLS certificate. Demo seeding refuses the default password in production and never prints the configured password.
 
 ## Database upgrades and retained history
 
-Keep all SQL migrations, including old backfills.  Migration 012 adds automated moderation cache metadata; old reviews are re-evaluated when next used.  Migration 013 removes inactive policy/clarification columns, preserving meaningful clarification values in `search_events.audit_summary_json.legacy_clarification` first.
+Keep all SQL migrations, including old backfills. Migration 012 adds automated moderation cache metadata; old reviews are re-evaluated when next used. Migration 013 removes inactive policy/clarification columns, preserving meaningful clarification values in `search_events.audit_summary_json.legacy_clarification` first.
 
-Historical moderation status/explanation fields, source confidence fields, and `videos.transcript_stored` remain for compatibility.  Older records can contain distinct information, so they are not automatically discarded.  Cached videos, parent decisions, search snapshots, and resolved reviews are also retained.  See [the cleanup record](docs/codebase-cleanup.md) for validation and remaining limitations.
+Historical moderation status/explanation fields, source confidence fields, and `videos.transcript_stored` remain for compatibility. Older records can contain distinct information, so they are not automatically discarded. Cached videos, parent decisions, search snapshots, and resolved reviews are also retained. See [the cleanup record](docs/codebase-cleanup.md) for validation and remaining limitations.
 
-The package override keeps transitive `qs` on a patched release.  Revisit the override when Express's dependency chain includes that release directly.  Use `npm audit` after dependency changes.
+The package override keeps transitive `qs` on a patched release. Revisit the override when Express's dependency chain includes that release directly. Use `npm audit` after dependency changes.
+
+## Model comparison experiment
+
+The separate parent-only prototype is at `/model-comparison`. It uses the configured YouTube Data API key even if the main app is running in mock mode. Add `OPENROUTER_API_KEY=your-key` to the root `.env` file, which Git ignores. Do not put the key in `model-comparison/`, source code, or `.env.example`. Restart the server after adding it.
+
+Each search keeps YouTube's configured SafeSearch setting and shows the first three video hits that can be verified as neither Shorts nor live streams. Other KidView filters do not select the demo results. The selected video's KidView decision is calculated read-only for comparison. Search results remain briefly in server memory and do not create KidView search history, usage, or parent review entries. Each comparison makes three paid OpenRouter requests. See [`model-comparison/PLAN.md`](model-comparison/PLAN.md) for scope and limitations.
