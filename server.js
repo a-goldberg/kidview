@@ -22,6 +22,7 @@ function createApp(options = {}) {
   const appConfig = options.config || config;
   const database = options.database || db;
   const app = express();
+  app.locals.demoModelComparisonEnabled = appConfig.demoModelComparisonEnabled === true;
 
   app.disable("x-powered-by");
   if (appConfig.trustProxy) app.set("trust proxy", appConfig.trustProxy);

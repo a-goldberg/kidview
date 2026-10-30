@@ -13,12 +13,27 @@ const view = path.join(__dirname, "page.ejs");
 // This experiment spends API quota, so only signed-in parents can use it.
 router.use((req, res, next) => {
   if (!req.session.parentUser) return res.redirect("/auth/login");
+  if (req.session.parentUser.isDemo && !req.app.locals.demoModelComparisonEnabled) {
+    return res.status(403).send("Model comparison is unavailable in the read-only demo.");
+  }
   next();
 });
 router.get("/style.css", (req, res) => res.sendFile(path.join(__dirname, "style.css")));
 router.get("/selection.js", (req, res) => res.sendFile(path.join(__dirname, "selection.js")));
-router.use("/search", rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: "draft-7", legacyHeaders: false }));
-router.use("/compare", rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: "draft-7", legacyHeaders: false }));
+// Keep the existing per-IP limits. Demo visitors also share an account limit
+// across browsers/IPs, so signing in again does not grant a fresh allowance.
+// These small in-memory limits reset when the single server process restarts.
+function demoAccountLimiter() {
+  return rateLimit({
+    windowMs: 15 * 60 * 1000, limit: 10,
+    keyGenerator: req => `demo-parent:${req.session.parentUser.id}`,
+    skip: req => !req.session.parentUser.isDemo,
+    standardHeaders: "draft-7", legacyHeaders: false,
+    message: "This demo account has reached its limit. Please wait 15 minutes and try again."
+  });
+}
+router.use("/search", demoAccountLimiter(), rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: "draft-7", legacyHeaders: false }));
+router.use("/compare", demoAccountLimiter(), rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: "draft-7", legacyHeaders: false }));
 
 function currentVideos(req) {
   const entry = recentSearches.get(req.sessionID);
@@ -50,6 +65,9 @@ router.post("/search", async (req, res, next) => {
     recentSearches.set(req.sessionID, { query, videos, createdAt: Date.now() });
     return renderPage(res, { query, videos });
   } catch (error) {
+    if (req.session.parentUser.isDemo) {
+      return renderPage(res, { query, error: "YouTube search is unavailable right now. Please try again later." });
+    }
     if (error.code === "youtube_data_api_error") {
       return renderPage(res, { query, error: error.userMessage });
     }
@@ -71,7 +89,11 @@ router.post("/compare", async (req, res) => {
     return res.status(400).render(view, { title: "Model comparison", query, videos, selectedId, selectedModelIds: DEFAULT_MODEL_IDS, models: MODELS, comparisons: [], baseline: null, preview: null, error: error.message });
   }
   try {
-    const comparisons = await compareVideo(video, process.env.OPENROUTER_API_KEY, selectedModelIds);
+    const rawComparisons = await compareVideo(video, process.env.OPENROUTER_API_KEY, selectedModelIds);
+    // Provider diagnostics belong to the operator, not the shared demo page.
+    const comparisons = req.session.parentUser.isDemo
+      ? rawComparisons.map(result => result.error ? { ...result, error: "This model is unavailable right now. Please try again later." } : result)
+      : rawComparisons;
     const baseline = baselineFor(video);
     const preview = /^[A-Za-z0-9_-]{11}$/.test(video.externalVideoId)
       ? {
@@ -82,7 +104,7 @@ router.post("/compare", async (req, res) => {
       : null;
     return renderPage(res, { query, videos, selectedId, selectedModelIds, comparisons, baseline, preview });
   } catch (error) {
-    return renderPage(res, { query, videos, selectedId, selectedModelIds, error: error.message });
+    return renderPage(res, { query, videos, selectedId, selectedModelIds, error: req.session.parentUser.isDemo ? "Model comparison is unavailable right now. Please try again later." : error.message });
   }
 });
 

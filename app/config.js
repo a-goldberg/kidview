@@ -116,6 +116,7 @@ module.exports = {
   seedParentPassword: process.env.SEED_PARENT_PASSWORD || DEFAULT_SEED_PASSWORD,
   defaultSeedPassword: DEFAULT_SEED_PASSWORD,
   videoSource,
+  demoModelComparisonEnabled: process.env.DEMO_MODEL_COMPARISON_ENABLED === "true",
   youtubeApiKey: process.env.YOUTUBE_API_KEY || "",
   youtubeMaxSearchResults: integerFromEnvironment(
     "YOUTUBE_MAX_SEARCH_RESULTS",

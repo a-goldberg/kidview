@@ -50,3 +50,16 @@ test('valid production configuration loads', () => {
 
   assert.equal(result.status, 0, result.stderr);
 });
+
+
+test('demo model comparison only enables with the explicit true setting', () => {
+  for (const value of ['', 'false', 'true', 'TRUE', '1']) {
+    const result = spawnSync(process.execPath, ['-e', 'process.stdout.write(String(require("./app/config").demoModelComparisonEnabled))'], {
+      cwd: projectRoot,
+      env: { ...process.env, NODE_ENV: 'test', DEMO_MODEL_COMPARISON_ENABLED: value },
+      encoding: 'utf8'
+    });
+    assert.equal(result.status, 0);
+    assert.equal(result.stdout, String(value === 'true'));
+  }
+});

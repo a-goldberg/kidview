@@ -10,6 +10,7 @@ const dbPath = path.join(os.tmpdir(), `kidview-accounts-${process.pid}.sqlite`);
 process.env.NODE_ENV = 'test';
 process.env.DATABASE_PATH = dbPath;
 process.env.VIDEO_SOURCE = 'mock';
+process.env.DEMO_MODEL_COMPARISON_ENABLED = 'false';
 process.env.APP_ORIGIN = '';
 process.env.SESSION_SECRET = 'accounts-test-session-secret-at-least-32-characters';
 for (const suffix of ['', '-wal', '-shm']) fs.rmSync(dbPath + suffix, { force: true });

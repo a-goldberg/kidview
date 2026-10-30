@@ -19,6 +19,9 @@
     <% if (typeof isDemo !== 'undefined' && isDemo) { %>
       <section class="panel" data-demo-mode aria-label="Demo information">
         <strong>Read-only demo</strong>
-        <p>This household contains synthetic sample data.  Changes and live API calls are disabled.  Child searches open a fixed sample result, and sample videos do not play.</p>
+        <p>This household contains synthetic sample data.  Household changes are disabled.  Child searches open a fixed sample result, and sample videos do not play.</p>
+        <% if (currentParent && demoModelComparisonEnabled) { %>
+          <p><a href="/model-comparison">Try live model comparison</a> with real YouTube results and AI assessments.  These requests use the configured APIs and aren't saved to this household.</p>
+        <% } %>
       </section>
     <% } %>

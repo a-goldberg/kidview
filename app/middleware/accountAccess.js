@@ -31,6 +31,12 @@ function demoAccess(req, res, next) {
   res.locals.isDemo = isDemo;
   if (!isDemo) return next();
   if (path.startsWith('/model-comparison')) {
+    // Only the standalone comparison tool gets live API access. The parent
+    // session is required even if this browser has a signed demo child cookie.
+    const readPath = ['/model-comparison', '/model-comparison/style.css', '/model-comparison/selection.js'].includes(path);
+    const actionPath = ['/model-comparison/search', '/model-comparison/compare'].includes(path);
+    if (parent && req.app.locals.demoModelComparisonEnabled &&
+        ((['GET', 'HEAD'].includes(req.method) && readPath) || (req.method === 'POST' && actionPath))) return next();
     return res.status(403).send('Model comparison is unavailable in the read-only demo.');
   }
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();

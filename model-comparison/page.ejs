@@ -5,6 +5,9 @@
     <p class="eyebrow">KidView experiment</p>
     <h1>Compare video assessments</h1>
     <p>Search YouTube, choose a result, and compare up to three models assessing it from metadata alone.</p>
+    <% if (typeof currentParent !== 'undefined' && currentParent && currentParent.isDemo) { %>
+      <p>This comparison tool is live.  Searches and assessments use real APIs but aren't saved to the demo household.  The shared demo account allows 10 searches and 10 comparisons per 15 minutes.  The rest of the household demo stays read-only.</p>
+    <% } %>
   </header>
 
   <form class="comparison-search" method="post" action="/model-comparison/search">
